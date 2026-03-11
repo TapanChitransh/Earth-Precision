@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earth's Axial Precession</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* Glassmorphism panels */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        /* 3D Tracked Labels */
+        .star-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 4px 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 0.75rem;
+            font-weight: bold;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+        @media (min-width: 768px) {
+            .star-label { font-size: 0.85rem; padding: 4px 10px; border-radius: 20px; }
+        }
+        
+        .hidden-label {
+            opacity: 0;
+        }
+
+        /* Custom Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(96, 165, 250, 0.8);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- 3D Tracked Labels -->
+    <div id="label-polaris" class="star-label text-blue-300">Polaris</div>
+    <div id="label-vega" class="star-label text-teal-300">Vega</div>
+    <div id="label-thuban" class="star-label text-purple-300">Thuban</div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="flex flex-col justify-between p-2 md:p-6 lg:p-8">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start gap-2 md:gap-4">
+            <div class="glass-panel p-3 md:p-5 max-w-sm md:max-w-md pointer-events-auto">
+                <h1 class="text-lg md:text-2xl lg:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300 mb-1 md:mb-2">Earth's Precession</h1>
+                <p class="text-xs md:text-sm text-slate-300 mb-2 hidden sm:block">
+                    Earth's 23.5° axis wobbles like a spinning top, tracing a circle over 26,000 years. Focus is locked on Earth as it orbits the Sun.
+                </p>
+                <div class="flex flex-wrap items-center gap-2 text-[10px] md:text-xs font-semibold">
+                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] mr-1"></span> Axis</div>
+                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] mr-1"></span> Path</div>
+                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)] mr-1"></span> Sun</div>
+                </div>
+            </div>
+
+            <!-- Cycle Tracker -->
+            <div class="glass-panel p-3 md:p-5 text-center min-w-[130px] md:min-w-[200px] pointer-events-auto self-end md:self-auto mt-2 md:mt-0">
+                <div class="text-[9px] md:text-xs text-slate-400 uppercase tracking-wider mb-1">Cycle Year</div>
+                <div class="text-xl md:text-3xl font-mono font-bold text-white leading-none" id="year-display">0</div>
+                <div class="text-[9px] md:text-xs text-slate-400 mt-1">/ 26,000 yrs</div>
+                
+                <!-- Circular Progress SVG -->
+                <div class="relative w-12 h-12 md:w-20 md:h-20 mx-auto mt-2 md:mt-4">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 96 96">
+                        <circle cx="48" cy="48" r="40" fill="none" stroke="#1e293b" stroke-width="8"></circle>
+                        <circle id="cycle-progress" cx="48" cy="48" r="40" fill="none" stroke="#3b82f6" stroke-width="8" stroke-dasharray="251.2" stroke-dashoffset="251.2" stroke-linecap="round"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <span class="text-sm md:text-lg" id="era-icon">🌟</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="glass-panel p-3 md:p-5 w-full max-w-2xl mx-auto pointer-events-auto mt-auto mb-2 md:mb-0">
+            <div class="flex flex-col md:grid md:grid-cols-2 gap-4 md:gap-6 items-center">
+                
+                <div class="w-full">
+                    <label class="flex justify-between text-xs md:text-sm font-medium mb-2 text-slate-300">
+                        <span>Time Speed</span>
+                        <span id="speed-display">1x</span>
+                    </label>
+                    <input type="range" id="speed-slider" min="0" max="100" value="20" class="w-full">
+                </div>
+
+                <div class="flex flex-wrap gap-2 justify-center md:justify-end w-full">
+                    <button id="btn-record" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-red-600/30 hover:bg-red-600/60 border border-red-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
+                        ⏺ Record
+                    </button>
+                    <button id="btn-polaris" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
+                        Polaris
+                    </button>
+                    <button id="btn-vega" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-teal-600/30 hover:bg-teal-600/60 border border-teal-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
+                        Vega
+                    </button>
+                </div>
+
+            </div>
+            
+            <p class="text-[10px] md:text-xs text-slate-400 mt-3 md:mt-4 text-center">
+                Touch/Click to Rotate | 2 Fingers/Right-Click to Pan | Pinch/Scroll to Zoom
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Constants
+        const TILT_DEGREES = 23.5;
+        const TILT_RADIANS = THREE.MathUtils.degToRad(TILT_DEGREES);
+        const CYCLE_YEARS = 26000;
+        const EARTH_DISTANCE = 40;
+        
+        // Globals
+        let scene, camera, renderer, controls;
+        let solarSystemGroup, earthOrbitGroup, earthPositionGroup;
+        let earth, axis, precessionGroup, tiltGroup;
+        let planetMeshes = []; // Store other planets for animation
+        
+        let cycleProgress = 0; // 0 to 1
+        let animationSpeed = 0.001; // Base speed
+        let earthRotationSpeed = 0.05; // Visual daily rotation
+        let earthOrbitSpeedBase = 0.003; // Visual yearly rotation
+        
+        // Video Recording Globals
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+        let recordCanvas, recordCtx;
+
+        // Target Points for Labels (Local to Earth)
+        let polarisPos = new THREE.Vector3();
+        let vegaPos = new THREE.Vector3();
+        let thubanPos = new THREE.Vector3();
+        
+        window.onload = function() {
+            initThreeJS();
+            setupUI();
+            animate();
+        };
+
+        function createProceduralEarthTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#0f2b4a'; // Ocean
+            ctx.fillRect(0, 0, 512, 256);
+
+            // Equator
+            ctx.strokeStyle = 'rgba(255, 100, 100, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, 128); ctx.lineTo(512, 128); ctx.stroke();
+
+            // Continents
+            ctx.fillStyle = '#1e5c3a';
+            let seed = 1;
+            function random() { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
+
+            for (let i = 0; i < 150; i++) {
+                const x = random() * 512;
+                const y = random() * 256;
+                if (y < 30 || y > 226) continue;
+                const r = random() * 20 + 3;
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#030305');
+
+            // Camera (Far clipping plane increased to see outer planets)
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 5;
+            controls.maxDistance = 200;
+
+            // Lights
+            scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+            // Starfield Background
+            createStarfield();
+
+            // Main Solar System Group
+            solarSystemGroup = new THREE.Group();
+            scene.add(solarSystemGroup);
+
+            // 1. The Sun
+            const sunGeo = new THREE.SphereGeometry(8, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
+            const sun = new THREE.Mesh(sunGeo, sunMat);
+            solarSystemGroup.add(sun);
+
+            // Sun Glow/Light
+            const sunLight = new THREE.PointLight(0xfff5b6, 2.5, 800);
+            solarSystemGroup.add(sunLight);
+            
+            const sunGlowGeo = new THREE.SphereGeometry(9.5, 32, 32);
+            const sunGlowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
+            solarSystemGroup.add(new THREE.Mesh(sunGlowGeo, sunGlowMat));
+
+            // Planet Data (Abstract scale/distances for visibility)
+            const planetsData = [
+                { name: 'Mercury', color: 0x888888, radius: 0.8, distance: 16, speed: 0.015 },
+                { name: 'Venus',   color: 0xe3bb76, radius: 1.5, distance: 26, speed: 0.008 },
+                // Earth goes here (Distance 40)
+                { name: 'Mars',    color: 0xc1440e, radius: 1.2, distance: 55, speed: 0.003 },
+                { name: 'Jupiter', color: 0xd39c7e, radius: 5.0, distance: 85, speed: 0.001 },
+                { name: 'Saturn',  color: 0xead6b8, radius: 4.0, distance: 120, speed: 0.0006, hasRing: true },
+                { name: 'Uranus',  color: 0xc6e4e5, radius: 2.5, distance: 160, speed: 0.0003 },
+                { name: 'Neptune', color: 0x5b5ddf, radius: 2.5, distance: 200, speed: 0.0001 }
+            ];
+
+            // Create Other Planets
+            planetsData.forEach(p => {
+                // Orbit Path
+                const orbitGeo = new THREE.RingGeometry(p.distance - 0.2, p.distance + 0.2, 64);
+                const orbitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.05 });
+                const orbitRing = new THREE.Mesh(orbitGeo, orbitMat);
+                orbitRing.rotation.x = Math.PI / 2;
+                solarSystemGroup.add(orbitRing);
+
+                // Planet System Group (handles orbit)
+                const pOrbitGroup = new THREE.Group();
+                // Random starting position on orbit
+                pOrbitGroup.rotation.y = Math.random() * Math.PI * 2;
+                solarSystemGroup.add(pOrbitGroup);
+
+                // Planet Mesh
+                const pGeo = new THREE.SphereGeometry(p.radius, 32, 32);
+                const pMat = new THREE.MeshPhongMaterial({ color: p.color, shininess: 5 });
+                const pMesh = new THREE.Mesh(pGeo, pMat);
+                pMesh.position.x = p.distance;
+                pOrbitGroup.add(pMesh);
+
+                // Saturn's Ring
+                if (p.hasRing) {
+                    const ringGeo = new THREE.RingGeometry(p.radius * 1.4, p.radius * 2.2, 32);
+                    const ringMat = new THREE.MeshBasicMaterial({ color: 0xead6b8, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+                    const ring = new THREE.Mesh(ringGeo, ringMat);
+                    ring.rotation.x = Math.PI / 2 + 0.3;
+                    pMesh.add(ring);
+                }
+
+                planetMeshes.push({ group: pOrbitGroup, speed: p.speed, mesh: pMesh });
+            });
+
+            // 2. Earth System Setup
+            earthOrbitGroup = new THREE.Group();
+            solarSystemGroup.add(earthOrbitGroup);
+
+            // Earth Orbit Path
+            const eOrbitGeo = new THREE.RingGeometry(EARTH_DISTANCE - 0.2, EARTH_DISTANCE + 0.2, 128);
+            const eOrbitMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide, transparent: true, opacity: 0.15 });
+            const eOrbitRing = new THREE.Mesh(eOrbitGeo, eOrbitMat);
+            eOrbitRing.rotation.x = Math.PI / 2;
+            solarSystemGroup.add(eOrbitRing);
+
+            // Earth Position Group (The container placed at Earth's distance)
+            earthPositionGroup = new THREE.Group();
+            earthPositionGroup.position.x = EARTH_DISTANCE;
+            earthOrbitGroup.add(earthPositionGroup);
+
+            // Ecliptic Plane (Reference Grid local to Earth)
+            const gridHelper = new THREE.GridHelper(20, 20, 0x334155, 0x1e293b);
+            earthPositionGroup.add(gridHelper);
+
+            // Precession Group (Rotates slowly around Y to simulate wobble)
+            precessionGroup = new THREE.Group();
+            earthPositionGroup.add(precessionGroup);
+
+            // Tilt Group (Fixed 23.5 tilt)
+            tiltGroup = new THREE.Group();
+            tiltGroup.rotation.z = -TILT_RADIANS;
+            precessionGroup.add(tiltGroup);
+
+            // The Earth Mesh
+            const earthGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const earthMaterial = new THREE.MeshPhongMaterial({
+                map: createProceduralEarthTexture(),
+                shininess: 15
+            });
+            earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            tiltGroup.add(earth);
+
+            // The Axis Line
+            const axisLength = 12;
+            const axisGeometry = new THREE.CylinderGeometry(0.05, 0.05, axisLength, 16);
+            const axisMaterial = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            axis = new THREE.Mesh(axisGeometry, axisMaterial);
+            tiltGroup.add(axis);
+
+            const arrowGeom = new THREE.ConeGeometry(0.2, 0.6, 16);
+            const arrowTip = new THREE.Mesh(arrowGeom, axisMaterial);
+            arrowTip.position.y = axisLength / 2;
+            tiltGroup.add(arrowTip);
+
+            // Precession Path Circle
+            const tipHeight = (axisLength / 2);
+            const pathY = tipHeight * Math.cos(TILT_RADIANS);
+            const pathRadius = tipHeight * Math.sin(TILT_RADIANS);
+
+            const pathGeometry = new THREE.BufferGeometry();
+            const pathPoints = [];
+            for (let i = 0; i <= 64; i++) {
+                const theta = (i / 64) * Math.PI * 2;
+                pathPoints.push(new THREE.Vector3(Math.cos(theta) * pathRadius, pathY, Math.sin(theta) * pathRadius));
+            }
+            pathGeometry.setFromPoints(pathPoints);
+            const pathMaterial = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.8 });
+            earthPositionGroup.add(new THREE.Line(pathGeometry, pathMaterial));
+
+            // Star Markers (Added to EarthPositionGroup so they travel with Earth)
+            polarisPos.set(-pathRadius, pathY, 0); 
+            vegaPos.set(pathRadius, pathY, 0);    
+            thubanPos.set(Math.cos(Math.PI * 1.5) * pathRadius, pathY, Math.sin(Math.PI * 1.5) * pathRadius); 
+
+            createStarMarker(polarisPos, 0x93c5fd, earthPositionGroup);
+            createStarMarker(vegaPos, 0x5eead4, earthPositionGroup);
+            createStarMarker(thubanPos, 0xd8b4fe, earthPositionGroup);
+
+            // Initialize Camera Position relative to Earth
+            camera.position.set(EARTH_DISTANCE + 15, 10, 15);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createStarfield() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsCount = 3000;
+            const posArray = new Float32Array(starsCount * 3);
+            
+            for(let i = 0; i < starsCount * 3; i++) {
+                // Large sphere enclosing the entire solar system
+                const r = 300 + Math.random() * 200;
+                const theta = Math.random() * 2 * Math.PI;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                
+                posArray[i] = r * Math.sin(phi) * Math.cos(theta);
+                posArray[i+1] = r * Math.sin(phi) * Math.sin(theta);
+                posArray[i+2] = r * Math.cos(phi);
+            }
+            
+            starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const starsMaterial = new THREE.PointsMaterial({ size: 0.5, color: 0xffffff, transparent: true, opacity: 0.6 });
+            scene.add(new THREE.Points(starsGeometry, starsMaterial));
+        }
+
+        function createStarMarker(position, colorHex, parentGroup) {
+            const geom = new THREE.SphereGeometry(0.15, 16, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.copy(position);
+            parentGroup.add(mesh);
+            
+            const glowGeom = new THREE.SphereGeometry(0.35, 16, 16);
+            const glowMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
+            const glowMesh = new THREE.Mesh(glowGeom, glowMat);
+            glowMesh.position.copy(position);
+            parentGroup.add(glowMesh);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function setupUI() {
+            const slider = document.getElementById('speed-slider');
+            const speedDisplay = document.getElementById('speed-display');
+
+            slider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                if (val === 0) {
+                    animationSpeed = 0;
+                    speedDisplay.innerText = "Paused";
+                } else {
+                    animationSpeed = (val / 100) * 0.01;
+                    speedDisplay.innerText = `${(val / 20).toFixed(1)}x`;
+                }
+            });
+
+            document.getElementById('btn-polaris').addEventListener('click', () => { cycleProgress = 0; precessionGroup.rotation.y = 0; });
+            document.getElementById('btn-vega').addEventListener('click', () => { cycleProgress = 0.5; precessionGroup.rotation.y = Math.PI; });
+
+            // Video Recording Logic
+            const recordBtn = document.getElementById('btn-record');
+            recordBtn.addEventListener('click', () => {
+                if (!isRecording) {
+                    if (!recordCanvas) {
+                        recordCanvas = document.createElement('canvas');
+                        recordCanvas.width = 1920;
+                        recordCanvas.height = 1080;
+                        recordCtx = recordCanvas.getContext('2d');
+                    }
+                    const stream = recordCanvas.captureStream(30);
+                    try {
+                        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp8', videoBitsPerSecond: 8000000 });
+                    } catch (e) {
+                        mediaRecorder = new MediaRecorder(stream);
+                    }
+                    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                        recordedChunks = [];
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'earth_precession_solarsystem.webm';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    };
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.innerHTML = '⏹ Stop';
+                    recordBtn.classList.replace('bg-red-600/30', 'bg-red-600/80');
+                    recordBtn.classList.add('animate-pulse');
+                } else {
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    recordBtn.innerHTML = '⏺ Record';
+                    recordBtn.classList.replace('bg-red-600/80', 'bg-red-600/30');
+                    recordBtn.classList.remove('animate-pulse');
+                }
+            });
+        }
+
+        function updateLabels2D() {
+            const updateLabel = (localPos, elementId) => {
+                const el = document.getElementById(elementId);
+                
+                // Convert Earth-local position to World Space
+                const worldPos = localPos.clone().applyMatrix4(earthPositionGroup.matrixWorld);
+                worldPos.project(camera);
+                
+                if (worldPos.z > 1) {
+                    el.classList.add('hidden-label');
+                    return;
+                }
+
+                const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (worldPos.y * -0.5 + 0.5) * window.innerHeight;
+
+                el.style.left = `${x}px`;
+                el.style.top = `${y - 25}px`;
+                el.classList.remove('hidden-label');
+            };
+
+            updateLabel(polarisPos, 'label-polaris');
+            updateLabel(vegaPos, 'label-vega');
+            updateLabel(thubanPos, 'label-thuban');
+        }
+
+        function updateUIData() {
+            const currentYear = Math.floor(cycleProgress * CYCLE_YEARS);
+            document.getElementById('year-display').innerText = currentYear.toLocaleString();
+
+            const progressCircle = document.getElementById('cycle-progress');
+            const offset = 251.2 - (cycleProgress * 251.2);
+            progressCircle.style.strokeDashoffset = offset;
+
+            const iconEl = document.getElementById('era-icon');
+            if (cycleProgress < 0.1 || cycleProgress > 0.9) iconEl.innerText = "🌟";
+            else if (cycleProgress > 0.4 && cycleProgress < 0.6) iconEl.innerText = "✨";
+            else iconEl.innerText = "⏳";
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Time step scaling based on user slider
+            const timeScale = animationSpeed / 0.001;
+
+            if (earth) earth.rotation.y += earthRotationSpeed * (timeScale > 0 ? 1 : 0);
+
+            if (animationSpeed > 0) {
+                // Precession
+                precessionGroup.rotation.y += animationSpeed;
+                if (precessionGroup.rotation.y >= Math.PI * 2) precessionGroup.rotation.y -= Math.PI * 2;
+                cycleProgress = precessionGroup.rotation.y / (Math.PI * 2);
+
+                // Planetary Orbits (Scaled so Earth moves visibly but smoothly)
+                earthOrbitGroup.rotation.y += earthOrbitSpeedBase * timeScale;
+                planetMeshes.forEach(p => { p.group.rotation.y += p.speed * timeScale; });
+            }
+
+            // Lock camera target to Earth's current world position
+            const earthWorldPos = new THREE.Vector3();
+            earthPositionGroup.getWorldPosition(earthWorldPos);
+            controls.target.copy(earthWorldPos);
+
+            controls.update();
+            updateLabels2D();
+            updateUIData();
+            renderer.render(scene, camera);
+
+            // Record Canvas Composite
+            if (isRecording && recordCtx) {
+                recordCtx.fillStyle = '#030305';
+                recordCtx.fillRect(0, 0, 1920, 1080);
+
+                const aspect = renderer.domElement.width / renderer.domElement.height;
+                let drawWidth = 1920, drawHeight = 1920 / aspect;
+                if (drawHeight > 1080) { drawHeight = 1080; drawWidth = 1080 * aspect; }
+                const dx = (1920 - drawWidth) / 2, dy = (1080 - drawHeight) / 2;
+                
+                recordCtx.drawImage(renderer.domElement, dx, dy, drawWidth, drawHeight);
+
+                // UI Background Plate
+                recordCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                recordCtx.beginPath();
+                if (recordCtx.roundRect) recordCtx.roundRect(40, 40, 520, 150, 16);
+                else recordCtx.fillRect(40, 40, 520, 150);
+                recordCtx.fill();
+                recordCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                recordCtx.lineWidth = 2;
+                recordCtx.stroke();
+
+                const currentYear = Math.floor(cycleProgress * CYCLE_YEARS);
+                recordCtx.fillStyle = '#ffffff';
+                recordCtx.font = 'bold 36px "Segoe UI", sans-serif';
+                recordCtx.textBaseline = 'alphabetic';
+                recordCtx.fillText("Earth's Precession", 70, 90);
+
+                recordCtx.fillStyle = '#60a5fa';
+                recordCtx.font = 'bold 44px monospace';
+                recordCtx.fillText(`Year: ${currentYear.toLocaleString()}`, 70, 145);
+
+                let eraText = "Transition ⏳";
+                if (cycleProgress < 0.1 || cycleProgress > 0.9) eraText = "Polaris Era 🌟";
+                else if (cycleProgress > 0.4 && cycleProgress < 0.6) eraText = "Vega Era ✨";
+                
+                recordCtx.fillStyle = '#cbd5e1'; 
+                recordCtx.font = '26px "Segoe UI", sans-serif';
+                recordCtx.fillText(eraText, 350, 140);
+
+                const drawLabel = (localPos, text, color) => {
+                    const worldPos = localPos.clone().applyMatrix4(earthPositionGroup.matrixWorld);
+                    worldPos.project(camera);
+                    if (worldPos.z > 1) return;
+                    
+                    const x = dx + (worldPos.x * 0.5 + 0.5) * drawWidth;
+                    const y = dy + (worldPos.y * -0.5 + 0.5) * drawHeight;
+
+                    recordCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    recordCtx.font = 'bold 22px "Segoe UI", sans-serif';
+                    const textWidth = recordCtx.measureText(text).width;
+                    
+                    recordCtx.beginPath();
+                    if (recordCtx.roundRect) recordCtx.roundRect(x - textWidth/2 - 15, y - 55, textWidth + 30, 44, 22);
+                    else recordCtx.fillRect(x - textWidth/2 - 15, y - 55, textWidth + 30, 44);
+                    recordCtx.fill();
+                    recordCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+                    recordCtx.lineWidth = 1.5;
+                    recordCtx.stroke();
+
+                    recordCtx.fillStyle = color;
+                    recordCtx.textBaseline = 'middle';
+                    recordCtx.fillText(text, x - textWidth/2, y - 33);
+                };
+
+                drawLabel(polarisPos, "Polaris", "#93c5fd");
+                drawLabel(vegaPos, "Vega", "#5eead4");
+                drawLabel(thubanPos, "Thuban", "#d8b4fe");
+            }
+        }
+    </script>
+</body>
+</html>
