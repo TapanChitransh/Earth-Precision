@@ -3,629 +3,578 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earth's Axial Precession</title>
+    <title>3D Astronomy Concepts Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .pointer-events-auto { pointer-events: auto; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
-        /* Glassmorphism panels */
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
+        body { 
+            font-family: 'Inter', sans-serif;
+            background-color: #020617; 
+            color: #f8fafc; 
         }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Nav Item Transitions */
+        .nav-item { 
+            transition: all 0.2s ease-in-out; 
+            border-left: 3px solid transparent; 
+        }
+        .nav-item:hover:not(.active) { 
+            background-color: rgba(30, 41, 59, 0.5); 
+            border-left: 3px solid #475569; 
+        }
+        .nav-item.active { 
+            background-color: #0f172a; 
+            border-left: 3px solid #38bdf8; 
+            color: #38bdf8; 
+            box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05);
+        }
+        
+        /* Frame Transitions */
+        iframe { transition: opacity 0.3s ease-in-out; }
+        .fade-out { opacity: 0; }
+        .fade-in { opacity: 1; }
 
-        /* 3D Tracked Labels */
-        .star-label {
-            position: absolute;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 4px 8px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            font-size: 0.75rem;
-            font-weight: bold;
-            pointer-events: none;
-            transition: opacity 0.2s;
-            white-space: nowrap;
-        }
+        /* Desktop Minimized Sidebar State */
         @media (min-width: 768px) {
-            .star-label { font-size: 0.85rem; padding: 4px 10px; border-radius: 20px; }
-        }
-        
-        .hidden-label {
-            opacity: 0;
-        }
-
-        /* Custom Slider */
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            background: #60a5fa;
-            cursor: pointer;
-            margin-top: -6px;
-            box-shadow: 0 0 10px rgba(96, 165, 250, 0.8);
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            cursor: pointer;
-            background: #334155;
-            border-radius: 2px;
+            .md-sidebar-collapsed { width: 5rem !important; }
+            
+            .md-sidebar-collapsed .nav-text,
+            .md-sidebar-collapsed #sidebar-title,
+            .md-sidebar-collapsed .delete-btn { 
+                display: none !important; 
+            }
+            
+            .md-sidebar-collapsed .nav-group-header { 
+                color: transparent; 
+                text-align: center; 
+                position: relative;
+                padding-left: 0;
+                padding-right: 0;
+            }
+            .md-sidebar-collapsed .nav-group-header::after { 
+                content: '•••'; 
+                color: #64748b; 
+                position: absolute; 
+                left: 0; 
+                right: 0; 
+                font-size: 14px;
+            }
+            
+            .md-sidebar-collapsed .nav-item { 
+                justify-content: center; 
+                padding-left: 0; 
+                padding-right: 0; 
+            }
+            .md-sidebar-collapsed .nav-item i {
+                font-size: 1.2rem;
+            }
+            .md-sidebar-collapsed #add-sim-text {
+                display: none;
+            }
         }
     </style>
 </head>
-<body>
+<body class="h-screen w-screen flex overflow-hidden selection:bg-sky-500/30">
 
-    <!-- 3D Canvas -->
-    <div id="canvas-container"></div>
-
-    <!-- 3D Tracked Labels -->
-    <div id="label-polaris" class="star-label text-blue-300">Polaris</div>
-    <div id="label-vega" class="star-label text-teal-300">Vega</div>
-    <div id="label-thuban" class="star-label text-purple-300">Thuban</div>
-
-    <!-- UI Overlay -->
-    <div id="ui-layer" class="flex flex-col justify-between p-2 md:p-6 lg:p-8">
+    <!-- Sidebar Navigation -->
+    <aside class="w-72 md:w-72 bg-slate-900 border-r border-slate-800 flex flex-col h-full flex-shrink-0 z-30 shadow-2xl transition-all duration-300 absolute md:relative -translate-x-full md:translate-x-0" id="sidebar">
         
-        <!-- Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start gap-2 md:gap-4">
-            <div class="glass-panel p-3 md:p-5 max-w-sm md:max-w-md pointer-events-auto">
-                <h1 class="text-lg md:text-2xl lg:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-300 mb-1 md:mb-2">Earth's Precession</h1>
-                <p class="text-xs md:text-sm text-slate-300 mb-2 hidden sm:block">
-                    Earth's 23.5° axis wobbles like a spinning top, tracing a circle over 26,000 years. Focus is locked on Earth as it orbits the Sun.
-                </p>
-                <div class="flex flex-wrap items-center gap-2 text-[10px] md:text-xs font-semibold">
-                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] mr-1"></span> Axis</div>
-                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] mr-1"></span> Path</div>
-                    <div class="flex items-center"><span class="w-2 h-2 md:w-3 md:h-3 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)] mr-1"></span> Sun</div>
+        <!-- Sidebar Header -->
+        <div class="h-16 border-b border-slate-800 flex justify-center md:justify-between items-center px-6 shrink-0 bg-slate-900 overflow-hidden">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0">
+                    <i class="fa-solid fa-planet-ringed text-sm"></i>
+                </div>
+                <div class="whitespace-nowrap transition-opacity duration-200" id="sidebar-title">
+                    <h1 class="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400 leading-tight">Astro 3D</h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Simulations</p>
                 </div>
             </div>
-
-            <!-- Cycle Tracker -->
-            <div class="glass-panel p-3 md:p-5 text-center min-w-[130px] md:min-w-[200px] pointer-events-auto self-end md:self-auto mt-2 md:mt-0">
-                <div class="text-[9px] md:text-xs text-slate-400 uppercase tracking-wider mb-1">Cycle Year</div>
-                <div class="text-xl md:text-3xl font-mono font-bold text-white leading-none" id="year-display">0</div>
-                <div class="text-[9px] md:text-xs text-slate-400 mt-1">/ 26,000 yrs</div>
-                
-                <!-- Circular Progress SVG -->
-                <div class="relative w-12 h-12 md:w-20 md:h-20 mx-auto mt-2 md:mt-4">
-                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 96 96">
-                        <circle cx="48" cy="48" r="40" fill="none" stroke="#1e293b" stroke-width="8"></circle>
-                        <circle id="cycle-progress" cx="48" cy="48" r="40" fill="none" stroke="#3b82f6" stroke-width="8" stroke-dasharray="251.2" stroke-dashoffset="251.2" stroke-linecap="round"></circle>
-                    </svg>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                        <span class="text-sm md:text-lg" id="era-icon">🌟</span>
-                    </div>
-                </div>
-            </div>
+            <button class="md:hidden text-slate-400 hover:text-white absolute right-4" onclick="toggleSidebar()">
+                <i class="fas fa-times text-lg"></i>
+            </button>
         </div>
 
-        <!-- Controls -->
-        <div class="glass-panel p-3 md:p-5 w-full max-w-2xl mx-auto pointer-events-auto mt-auto mb-2 md:mb-0">
-            <div class="flex flex-col md:grid md:grid-cols-2 gap-4 md:gap-6 items-center">
+        <!-- Navigation Links Container -->
+        <div class="flex-1 overflow-y-auto py-4 overflow-x-hidden" id="nav-container">
+            <!-- Nav sections generated by JS -->
+        </div>
+
+        <!-- Add Custom Sim Button / Footer -->
+        <div class="p-4 border-t border-slate-800 text-xs bg-slate-900/80 flex flex-col gap-2 shrink-0">
+            <button onclick="toggleAddModal()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-md font-medium transition-colors border border-slate-700 flex items-center justify-center gap-2 shadow-inner" title="Add Custom Simulation">
+                <i class="fas fa-plus"></i> <span id="add-sim-text">Add Custom Code</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col h-full relative min-w-0">
+        
+        <!-- Header -->
+        <header class="h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-20 shrink-0 shadow-sm">
+            <div class="flex items-center">
+                <!-- Minimize Menu Toggle -->
+                <button class="text-slate-400 hover:text-white mr-4 p-2 rounded-md hover:bg-slate-800 transition-colors" onclick="toggleSidebar()" title="Toggle Menu">
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
                 
-                <div class="w-full">
-                    <label class="flex justify-between text-xs md:text-sm font-medium mb-2 text-slate-300">
-                        <span>Time Speed</span>
-                        <span id="speed-display">1x</span>
-                    </label>
-                    <input type="range" id="speed-slider" min="0" max="100" value="20" class="w-full">
+                <div class="flex items-center gap-3">
+                    <i id="current-icon" class="fas fa-compass text-sky-400"></i>
+                    <h2 class="text-base md:text-lg font-semibold text-slate-200 tracking-tight whitespace-nowrap" id="current-title">Select a Concept</h2>
                 </div>
 
-                <div class="flex flex-wrap gap-2 justify-center md:justify-end w-full">
-                    <button id="btn-record" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-red-600/30 hover:bg-red-600/60 border border-red-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
-                        ⏺ Record
-                    </button>
-                    <button id="btn-polaris" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-blue-600/30 hover:bg-blue-600/60 border border-blue-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
-                        Polaris
-                    </button>
-                    <button id="btn-vega" class="flex-1 md:flex-none px-3 py-1.5 md:px-4 md:py-2 bg-teal-600/30 hover:bg-teal-600/60 border border-teal-500/50 rounded-lg text-xs md:text-sm font-medium transition-colors whitespace-nowrap">
-                        Vega
-                    </button>
+                <!-- 360 Indicator Badge -->
+                <div class="hidden sm:flex items-center gap-2 bg-sky-500/10 text-sky-400 px-3 py-1 rounded-full text-xs font-medium border border-sky-500/20 ml-6">
+                    <i class="fas fa-arrows-alt"></i> 360° Interactive
                 </div>
-
             </div>
+
+            <!-- Action Tools -->
+            <div class="flex items-center gap-1 sm:gap-2">
+                <!-- Info Panel Toggle -->
+                <button onclick="toggleInfo()" class="text-slate-400 hover:text-sky-400 p-2 rounded hover:bg-slate-800 transition-colors" title="Dashboard Info">
+                    <i class="fas fa-question-circle text-lg"></i>
+                </button>
+
+                <!-- Minimize Boxes Toggle -->
+                <button onclick="toggleBoxes()" class="text-slate-400 hover:text-sky-400 p-2 rounded hover:bg-slate-800 transition-colors" title="Hide/Show Info Boxes">
+                    <i id="box-toggle-icon" class="fas fa-eye text-lg"></i>
+                </button>
+                
+                <!-- Fullscreen Toggle -->
+                <button onclick="toggleFullscreen()" class="text-slate-400 hover:text-sky-400 p-2 rounded hover:bg-slate-800 transition-colors" title="Fullscreen 360 View">
+                    <i class="fas fa-expand text-lg"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Simulation Viewer -->
+        <div class="flex-1 relative bg-[#020617]">
+            <!-- Loading Indicator -->
+            <div id="loader" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 z-10 pointer-events-none transition-opacity duration-300">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 rounded-full border-t-2 border-b-2 border-sky-400 animate-spin"></div>
+                    <div class="absolute inset-2 rounded-full border-l-2 border-r-2 border-indigo-500 animate-[spin_1.5s_reverse_infinite]"></div>
+                    <i class="fas fa-meteor absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-slate-600 text-sm"></i>
+                </div>
+                <p class="mt-4 text-sm font-medium text-slate-400 animate-pulse tracking-widest uppercase">Initializing Simulation...</p>
+            </div>
+
+            <!-- IFrame to hold the simulation code -->
+            <div id="iframe-container" class="absolute inset-0 z-0">
+                <iframe id="sim-frame" class="w-full h-full border-0 fade-out" title="Simulation View" sandbox="allow-scripts allow-same-origin"></iframe>
+            </div>
+        </div>
+    </main>
+
+    <!-- Overlay for mobile -->
+    <div id="mobile-overlay" class="fixed inset-0 bg-black/60 z-20 hidden md:hidden backdrop-blur-sm transition-opacity" onclick="toggleSidebar()"></div>
+
+    <!-- Info / Help Panel Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center backdrop-blur-sm transition-opacity opacity-0" onclick="toggleInfo()">
+        <div class="bg-slate-900 border border-slate-700 p-6 md:p-8 rounded-xl max-w-md w-[90%] shadow-2xl relative" onclick="event.stopPropagation()">
+            <button onclick="toggleInfo()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fas fa-times text-lg"></i></button>
+            <h2 class="text-xl md:text-2xl font-bold text-sky-400 mb-4 border-b border-slate-800 pb-3">Dashboard Guide</h2>
+            <ul class="space-y-4 text-sm text-slate-300">
+                <li class="flex gap-3">
+                    <i class="fas fa-arrows-alt text-indigo-400 text-lg mt-0.5"></i> 
+                    <div><b>360° Interaction:</b> Touch and drag on the canvas to freely rotate the camera in full 360 degrees.</div>
+                </li>
+                <li class="flex gap-3">
+                    <i class="fas fa-search-plus text-indigo-400 text-lg mt-0.5"></i> 
+                    <div><b>Zooming:</b> Scroll your mouse wheel or use a pinch gesture on mobile devices to zoom in and out.</div>
+                </li>
+                <li class="flex gap-3">
+                    <i class="fas fa-eye-slash text-indigo-400 text-lg mt-0.5"></i> 
+                    <div><b>Minimize Boxes:</b> Click the eye icon in the top header to hide all simulation text panels, giving you an unobstructed view of space.</div>
+                </li>
+                <li class="flex gap-3">
+                    <i class="fas fa-bars text-indigo-400 text-lg mt-0.5"></i> 
+                    <div><b>Minimize Menu:</b> Click the hamburger icon (top left) to collapse the side menu for a wider screen view.</div>
+                </li>
+                <li class="flex gap-3">
+                    <i class="fas fa-code text-indigo-400 text-lg mt-0.5"></i> 
+                    <div><b>Add Custom Code:</b> Click the button at the bottom of the menu to paste raw HTML code and test new simulations in the dashboard.</div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Add Custom Simulation Modal -->
+    <div id="add-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl max-w-4xl w-[90%] h-[85vh] shadow-2xl relative flex flex-col">
+            <button onclick="toggleAddModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fas fa-times text-lg"></i></button>
+            <h2 class="text-xl font-bold text-sky-400 mb-4 border-b border-slate-800 pb-3">Add Custom HTML Simulation</h2>
             
-            <p class="text-[10px] md:text-xs text-slate-400 mt-3 md:mt-4 text-center">
-                Touch/Click to Rotate | 2 Fingers/Right-Click to Pan | Pinch/Scroll to Zoom
-            </p>
+            <label class="text-xs text-slate-400 font-bold uppercase mb-1">Simulation Name</label>
+            <input id="custom-name" type="text" placeholder="e.g. Black Hole Physics" class="bg-slate-800 text-white px-4 py-2 rounded mb-4 border border-slate-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none w-full">
+            
+            <label class="text-xs text-slate-400 font-bold uppercase mb-1">Raw HTML Code</label>
+            <textarea id="custom-code" placeholder="<!DOCTYPE html>\n<html>\n  ...\n</html>" class="bg-slate-800 text-white p-4 rounded flex-1 mb-4 border border-slate-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none font-mono text-sm resize-none"></textarea>
+            
+            <div class="flex justify-end gap-3 pt-2 border-t border-slate-800 shrink-0">
+                <button onclick="toggleAddModal()" class="px-5 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Cancel</button>
+                <button onclick="saveCustomSim()" class="px-5 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-bold rounded shadow-lg shadow-sky-500/20 transition-all">Save & Run</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // Constants
-        const TILT_DEGREES = 23.5;
-        const TILT_RADIANS = THREE.MathUtils.degToRad(TILT_DEGREES);
-        const CYCLE_YEARS = 26000;
-        const EARTH_DISTANCE = 40;
-        
-        // Globals
-        let scene, camera, renderer, controls;
-        let solarSystemGroup, earthOrbitGroup, earthPositionGroup;
-        let earth, axis, precessionGroup, tiltGroup;
-        let planetMeshes = []; // Store other planets for animation
-        
-        let cycleProgress = 0; // 0 to 1
-        let animationSpeed = 0.001; // Base speed
-        let earthRotationSpeed = 0.05; // Visual daily rotation
-        let earthOrbitSpeedBase = 0.003; // Visual yearly rotation
-        
-        // Video Recording Globals
-        let mediaRecorder;
-        let recordedChunks = [];
-        let isRecording = false;
-        let recordCanvas, recordCtx;
+        // The HTML for the Welcome Screen
+        const homeHTML = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { margin: 0; background-color: #020617; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; padding: 20px; box-sizing: border-box; }
+                .box { background: rgba(30, 41, 59, 0.5); border: 1px solid #334155; padding: 40px; border-radius: 16px; max-width: 600px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+                h1 { color: #38bdf8; margin-top: 0; font-size: 28px; }
+                p { line-height: 1.6; color: #cbd5e1; font-size: 15px; }
+                code { background: #0f172a; padding: 4px 8px; border-radius: 4px; color: #f472b6; font-family: monospace; }
+                .highlight { color: #fbbf24; font-weight: bold; }
+                .warning-box { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #fbbf24; text-align: left; }
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <h1>Welcome to Astro 3D Dashboard</h1>
+                <p>Your dashboard interface is successfully running! 🚀</p>
+                <p>To ensure <b>zero modifications</b> to your code, this dashboard connects directly to your original files (like <code>Combustion.html</code>) instead of rewriting them.</p>
+                <div class="warning-box">
+                    <p style="margin: 0; font-size: 0.95em;">
+                        <span class="highlight">⚠️ IMPORTANT:</span> If you are viewing this in the online web previewer, clicking the sidebar links will show a blank screen or a "Not Found" error because the previewer cannot see the files on your computer.
+                    </p>
+                </div>
+                <p><b>How to use:</b> Download this dashboard file and place it in the <b>exact same folder</b> as your 10 simulation files, then open it in your browser.</p>
+                <p style="font-size: 0.85em; color: #64748b; margin-top: 30px;">
+                    <i>Want to test right now? Use the "Add Custom Code" button in the menu to paste your HTML!</i>
+                </p>
+            </div>
+        </body>
+        </html>
+        `;
 
-        // Target Points for Labels (Local to Earth)
-        let polarisPos = new THREE.Vector3();
-        let vegaPos = new THREE.Vector3();
-        let thubanPos = new THREE.Vector3();
-        
-        window.onload = function() {
-            initThreeJS();
-            setupUI();
-            animate();
-        };
-
-        function createProceduralEarthTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-
-            ctx.fillStyle = '#0f2b4a'; // Ocean
-            ctx.fillRect(0, 0, 512, 256);
-
-            // Equator
-            ctx.strokeStyle = 'rgba(255, 100, 100, 0.6)';
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 128); ctx.lineTo(512, 128); ctx.stroke();
-
-            // Continents
-            ctx.fillStyle = '#1e5c3a';
-            let seed = 1;
-            function random() { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
-
-            for (let i = 0; i < 150; i++) {
-                const x = random() * 512;
-                const y = random() * 256;
-                if (y < 30 || y > 226) continue;
-                const r = random() * 20 + 3;
-                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        // Menu Configuration pointing strictly to the original user files
+        // (Guarantees zero code modifications)
+        const defaultMenuData = [
+            {
+                group: "Dashboard",
+                items: [
+                    { id: "sim-home", title: "Getting Started", icon: "fa-home", isHome: true }
+                ]
+            },
+            {
+                group: "Earth & Sun Mechanics",
+                items: [
+                    { id: "sim-seasons", title: "Uttarayan & Dakshinayan", icon: "fa-sun", url: "Uttarayan & Dakshinayan.html" },
+                    { id: "sim-sun-oscillation", title: "Synchronized Sun Views", icon: "fa-arrows-left-right", url: "sun oscillation.html" },
+                    { id: "sim-earth-precession", title: "Earth's Axial Precession", icon: "fa-globe-americas", url: "earth_precession.html" }
+                ]
+            },
+            {
+                group: "Lunar Mechanics",
+                items: [
+                    { id: "sim-lunar-phase", title: "Lunar Phases (Pakshas)", icon: "fa-moon", url: "Lunar Phase Animation.html" },
+                    { id: "sim-nodes", title: "Lunar Nodes & Orbit", icon: "fa-ring", url: "Nodes.html" },
+                    { id: "sim-nodes-retro", title: "Why Nodes are Retrograde", icon: "fa-rotate-left", url: "WhyLunarNodesRetro.html" }
+                ]
+            },
+            {
+                group: "Planetary Mechanics",
+                items: [
+                    { id: "sim-retrograde", title: "Retrograde Motion", icon: "fa-backward", url: "RetrogradeMotiom.html" },
+                    { id: "sim-combust", title: "Planetary Combustion", icon: "fa-fire", url: "Combustion.html" }
+                ]
+            },
+            {
+                group: "Celestial Sphere",
+                items: [
+                    { id: "sim-zodiac-helio", title: "Zodiac Belt (Heliocentric)", icon: "fa-atom", url: "Zodiac Belt 3d.html" },
+                    { id: "sim-zodiac-geo", title: "Zodiac & Nakshatras (Geo)", icon: "fa-star", url: "Zodiac belt GeoCentric.html" }
+					{ id: "sim-zodiac-ascendant", title: "Zodiac Ascendant Simulator", icon: "fa-location-arrow", url: "zodiac ascendant simulator.html" }
+                ]
             }
+        ];
 
-            const texture = new THREE.CanvasTexture(canvas);
-            return texture;
-        }
+        // Combine default with Custom saved sims
+        function getCombinedMenuData() {
+            let customSims = [];
+            try {
+                customSims = JSON.parse(localStorage.getItem('customSims') || '[]');
+            } catch(e) { console.error("Could not parse localStorage"); }
 
-        function initThreeJS() {
-            const container = document.getElementById('canvas-container');
-
-            // Scene
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color('#030305');
-
-            // Camera (Far clipping plane increased to see outer planets)
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
-            
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            container.appendChild(renderer.domElement);
-
-            // Controls
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.minDistance = 5;
-            controls.maxDistance = 200;
-
-            // Lights
-            scene.add(new THREE.AmbientLight(0xffffff, 0.15));
-
-            // Starfield Background
-            createStarfield();
-
-            // Main Solar System Group
-            solarSystemGroup = new THREE.Group();
-            scene.add(solarSystemGroup);
-
-            // 1. The Sun
-            const sunGeo = new THREE.SphereGeometry(8, 32, 32);
-            const sunMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
-            const sun = new THREE.Mesh(sunGeo, sunMat);
-            solarSystemGroup.add(sun);
-
-            // Sun Glow/Light
-            const sunLight = new THREE.PointLight(0xfff5b6, 2.5, 800);
-            solarSystemGroup.add(sunLight);
-            
-            const sunGlowGeo = new THREE.SphereGeometry(9.5, 32, 32);
-            const sunGlowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
-            solarSystemGroup.add(new THREE.Mesh(sunGlowGeo, sunGlowMat));
-
-            // Planet Data (Abstract scale/distances for visibility)
-            const planetsData = [
-                { name: 'Mercury', color: 0x888888, radius: 0.8, distance: 16, speed: 0.015 },
-                { name: 'Venus',   color: 0xe3bb76, radius: 1.5, distance: 26, speed: 0.008 },
-                // Earth goes here (Distance 40)
-                { name: 'Mars',    color: 0xc1440e, radius: 1.2, distance: 55, speed: 0.003 },
-                { name: 'Jupiter', color: 0xd39c7e, radius: 5.0, distance: 85, speed: 0.001 },
-                { name: 'Saturn',  color: 0xead6b8, radius: 4.0, distance: 120, speed: 0.0006, hasRing: true },
-                { name: 'Uranus',  color: 0xc6e4e5, radius: 2.5, distance: 160, speed: 0.0003 },
-                { name: 'Neptune', color: 0x5b5ddf, radius: 2.5, distance: 200, speed: 0.0001 }
-            ];
-
-            // Create Other Planets
-            planetsData.forEach(p => {
-                // Orbit Path
-                const orbitGeo = new THREE.RingGeometry(p.distance - 0.2, p.distance + 0.2, 64);
-                const orbitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.05 });
-                const orbitRing = new THREE.Mesh(orbitGeo, orbitMat);
-                orbitRing.rotation.x = Math.PI / 2;
-                solarSystemGroup.add(orbitRing);
-
-                // Planet System Group (handles orbit)
-                const pOrbitGroup = new THREE.Group();
-                // Random starting position on orbit
-                pOrbitGroup.rotation.y = Math.random() * Math.PI * 2;
-                solarSystemGroup.add(pOrbitGroup);
-
-                // Planet Mesh
-                const pGeo = new THREE.SphereGeometry(p.radius, 32, 32);
-                const pMat = new THREE.MeshPhongMaterial({ color: p.color, shininess: 5 });
-                const pMesh = new THREE.Mesh(pGeo, pMat);
-                pMesh.position.x = p.distance;
-                pOrbitGroup.add(pMesh);
-
-                // Saturn's Ring
-                if (p.hasRing) {
-                    const ringGeo = new THREE.RingGeometry(p.radius * 1.4, p.radius * 2.2, 32);
-                    const ringMat = new THREE.MeshBasicMaterial({ color: 0xead6b8, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
-                    const ring = new THREE.Mesh(ringGeo, ringMat);
-                    ring.rotation.x = Math.PI / 2 + 0.3;
-                    pMesh.add(ring);
-                }
-
-                planetMeshes.push({ group: pOrbitGroup, speed: p.speed, mesh: pMesh });
-            });
-
-            // 2. Earth System Setup
-            earthOrbitGroup = new THREE.Group();
-            solarSystemGroup.add(earthOrbitGroup);
-
-            // Earth Orbit Path
-            const eOrbitGeo = new THREE.RingGeometry(EARTH_DISTANCE - 0.2, EARTH_DISTANCE + 0.2, 128);
-            const eOrbitMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide, transparent: true, opacity: 0.15 });
-            const eOrbitRing = new THREE.Mesh(eOrbitGeo, eOrbitMat);
-            eOrbitRing.rotation.x = Math.PI / 2;
-            solarSystemGroup.add(eOrbitRing);
-
-            // Earth Position Group (The container placed at Earth's distance)
-            earthPositionGroup = new THREE.Group();
-            earthPositionGroup.position.x = EARTH_DISTANCE;
-            earthOrbitGroup.add(earthPositionGroup);
-
-            // Ecliptic Plane (Reference Grid local to Earth)
-            const gridHelper = new THREE.GridHelper(20, 20, 0x334155, 0x1e293b);
-            earthPositionGroup.add(gridHelper);
-
-            // Precession Group (Rotates slowly around Y to simulate wobble)
-            precessionGroup = new THREE.Group();
-            earthPositionGroup.add(precessionGroup);
-
-            // Tilt Group (Fixed 23.5 tilt)
-            tiltGroup = new THREE.Group();
-            tiltGroup.rotation.z = -TILT_RADIANS;
-            precessionGroup.add(tiltGroup);
-
-            // The Earth Mesh
-            const earthGeometry = new THREE.SphereGeometry(3, 32, 32);
-            const earthMaterial = new THREE.MeshPhongMaterial({
-                map: createProceduralEarthTexture(),
-                shininess: 15
-            });
-            earth = new THREE.Mesh(earthGeometry, earthMaterial);
-            tiltGroup.add(earth);
-
-            // The Axis Line
-            const axisLength = 12;
-            const axisGeometry = new THREE.CylinderGeometry(0.05, 0.05, axisLength, 16);
-            const axisMaterial = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-            axis = new THREE.Mesh(axisGeometry, axisMaterial);
-            tiltGroup.add(axis);
-
-            const arrowGeom = new THREE.ConeGeometry(0.2, 0.6, 16);
-            const arrowTip = new THREE.Mesh(arrowGeom, axisMaterial);
-            arrowTip.position.y = axisLength / 2;
-            tiltGroup.add(arrowTip);
-
-            // Precession Path Circle
-            const tipHeight = (axisLength / 2);
-            const pathY = tipHeight * Math.cos(TILT_RADIANS);
-            const pathRadius = tipHeight * Math.sin(TILT_RADIANS);
-
-            const pathGeometry = new THREE.BufferGeometry();
-            const pathPoints = [];
-            for (let i = 0; i <= 64; i++) {
-                const theta = (i / 64) * Math.PI * 2;
-                pathPoints.push(new THREE.Vector3(Math.cos(theta) * pathRadius, pathY, Math.sin(theta) * pathRadius));
+            let combined = [...defaultMenuData];
+            if (customSims.length > 0) {
+                combined.push({
+                    group: "Custom Simulations",
+                    items: customSims
+                });
             }
-            pathGeometry.setFromPoints(pathPoints);
-            const pathMaterial = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.8 });
-            earthPositionGroup.add(new THREE.Line(pathGeometry, pathMaterial));
-
-            // Star Markers (Added to EarthPositionGroup so they travel with Earth)
-            polarisPos.set(-pathRadius, pathY, 0); 
-            vegaPos.set(pathRadius, pathY, 0);    
-            thubanPos.set(Math.cos(Math.PI * 1.5) * pathRadius, pathY, Math.sin(Math.PI * 1.5) * pathRadius); 
-
-            createStarMarker(polarisPos, 0x93c5fd, earthPositionGroup);
-            createStarMarker(vegaPos, 0x5eead4, earthPositionGroup);
-            createStarMarker(thubanPos, 0xd8b4fe, earthPositionGroup);
-
-            // Initialize Camera Position relative to Earth
-            camera.position.set(EARTH_DISTANCE + 15, 10, 15);
-
-            window.addEventListener('resize', onWindowResize, false);
+            return combined;
         }
 
-        function createStarfield() {
-            const starsGeometry = new THREE.BufferGeometry();
-            const starsCount = 3000;
-            const posArray = new Float32Array(starsCount * 3);
+        // Build the Sidebar UI dynamically
+        function initDashboard() {
+            const container = document.getElementById('nav-container');
+            container.innerHTML = ''; // clear existing
             
-            for(let i = 0; i < starsCount * 3; i++) {
-                // Large sphere enclosing the entire solar system
-                const r = 300 + Math.random() * 200;
-                const theta = Math.random() * 2 * Math.PI;
-                const phi = Math.acos((Math.random() * 2) - 1);
-                
-                posArray[i] = r * Math.sin(phi) * Math.cos(theta);
-                posArray[i+1] = r * Math.sin(phi) * Math.sin(theta);
-                posArray[i+2] = r * Math.cos(phi);
-            }
-            
-            starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-            const starsMaterial = new THREE.PointsMaterial({ size: 0.5, color: 0xffffff, transparent: true, opacity: 0.6 });
-            scene.add(new THREE.Points(starsGeometry, starsMaterial));
-        }
+            const data = getCombinedMenuData();
 
-        function createStarMarker(position, colorHex, parentGroup) {
-            const geom = new THREE.SphereGeometry(0.15, 16, 16);
-            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
-            const mesh = new THREE.Mesh(geom, mat);
-            mesh.position.copy(position);
-            parentGroup.add(mesh);
-            
-            const glowGeom = new THREE.SphereGeometry(0.35, 16, 16);
-            const glowMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
-            const glowMesh = new THREE.Mesh(glowGeom, glowMat);
-            glowMesh.position.copy(position);
-            parentGroup.add(glowMesh);
-        }
+            data.forEach(group => {
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'nav-group-header px-6 py-3 mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap transition-all duration-200';
+                groupHeader.textContent = group.group;
+                container.appendChild(groupHeader);
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+                group.items.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.id = `nav-${item.id}`;
+                    btn.title = item.title; 
+                    btn.className = 'nav-item w-full flex items-center gap-3 px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer text-left overflow-hidden whitespace-nowrap transition-all duration-200 group';
+                    
+                    btn.onclick = () => loadSim(item.id, item.title, item.url, item.isCustom, item.isHome);
+                    
+                    const icon = document.createElement('i');
+                    icon.className = `fas ${item.icon} w-5 text-center opacity-70 shrink-0`;
+                    
+                    const text = document.createElement('span');
+                    text.className = 'nav-text transition-opacity duration-200 flex-1 truncate';
+                    text.textContent = item.title;
+                    
+                    btn.appendChild(icon);
+                    btn.appendChild(text);
 
-        function setupUI() {
-            const slider = document.getElementById('speed-slider');
-            const speedDisplay = document.getElementById('speed-display');
-
-            slider.addEventListener('input', (e) => {
-                const val = parseInt(e.target.value);
-                if (val === 0) {
-                    animationSpeed = 0;
-                    speedDisplay.innerText = "Paused";
-                } else {
-                    animationSpeed = (val / 100) * 0.01;
-                    speedDisplay.innerText = `${(val / 20).toFixed(1)}x`;
-                }
-            });
-
-            document.getElementById('btn-polaris').addEventListener('click', () => { cycleProgress = 0; precessionGroup.rotation.y = 0; });
-            document.getElementById('btn-vega').addEventListener('click', () => { cycleProgress = 0.5; precessionGroup.rotation.y = Math.PI; });
-
-            // Video Recording Logic
-            const recordBtn = document.getElementById('btn-record');
-            recordBtn.addEventListener('click', () => {
-                if (!isRecording) {
-                    if (!recordCanvas) {
-                        recordCanvas = document.createElement('canvas');
-                        recordCanvas.width = 1920;
-                        recordCanvas.height = 1080;
-                        recordCtx = recordCanvas.getContext('2d');
+                    // Add Delete button for custom ones
+                    if(item.isCustom) {
+                        const delBtn = document.createElement('i');
+                        delBtn.className = 'fas fa-trash text-red-500/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity ml-auto delete-btn shrink-0';
+                        delBtn.title = "Delete Custom Simulation";
+                        delBtn.onclick = (e) => deleteCustomSim(e, item.id);
+                        btn.appendChild(delBtn);
                     }
-                    const stream = recordCanvas.captureStream(30);
-                    try {
-                        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp8', videoBitsPerSecond: 8000000 });
-                    } catch (e) {
-                        mediaRecorder = new MediaRecorder(stream);
-                    }
-                    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-                    mediaRecorder.onstop = () => {
-                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                        recordedChunks = [];
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'earth_precession_solarsystem.webm';
-                        a.click();
-                        URL.revokeObjectURL(url);
-                    };
-                    mediaRecorder.start();
-                    isRecording = true;
-                    recordBtn.innerHTML = '⏹ Stop';
-                    recordBtn.classList.replace('bg-red-600/30', 'bg-red-600/80');
-                    recordBtn.classList.add('animate-pulse');
-                } else {
-                    mediaRecorder.stop();
-                    isRecording = false;
-                    recordBtn.innerHTML = '⏺ Record';
-                    recordBtn.classList.replace('bg-red-600/80', 'bg-red-600/30');
-                    recordBtn.classList.remove('animate-pulse');
-                }
+
+                    container.appendChild(btn);
+                });
             });
+
+            // Auto-load the "Home" Getting Started Screen
+            const firstItem = data[0].items[0];
+            loadSim(firstItem.id, firstItem.title, firstItem.url, firstItem.isCustom, firstItem.isHome);
         }
 
-        function updateLabels2D() {
-            const updateLabel = (localPos, elementId) => {
-                const el = document.getElementById(elementId);
-                
-                // Convert Earth-local position to World Space
-                const worldPos = localPos.clone().applyMatrix4(earthPositionGroup.matrixWorld);
-                worldPos.project(camera);
-                
-                if (worldPos.z > 1) {
-                    el.classList.add('hidden-label');
-                    return;
-                }
+        // Modals Logic
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            if (window.innerWidth < 768) {
+                sidebar.classList.toggle('-translate-x-full');
+                overlay.classList.toggle('hidden');
+            } else {
+                sidebar.classList.toggle('md-sidebar-collapsed');
+            }
+        }
 
-                const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
-                const y = (worldPos.y * -0.5 + 0.5) * window.innerHeight;
+        function toggleInfo() {
+            const modal = document.getElementById('info-modal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            } else {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
 
-                el.style.left = `${x}px`;
-                el.style.top = `${y - 25}px`;
-                el.classList.remove('hidden-label');
+        function toggleAddModal() {
+            const modal = document.getElementById('add-modal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            } else {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {});
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        // Saving Custom Sim to LocalStorage
+        function saveCustomSim() {
+            const nameInput = document.getElementById('custom-name');
+            const codeInput = document.getElementById('custom-code');
+            
+            const title = nameInput.value.trim();
+            const code = codeInput.value.trim();
+            
+            if (!title || !code) {
+                alert("Please provide both a name and your HTML code.");
+                return;
+            }
+
+            let customSims = JSON.parse(localStorage.getItem('customSims') || '[]');
+            
+            const newSim = {
+                id: 'custom-' + Date.now(),
+                title: title,
+                icon: 'fa-code',
+                code: code,
+                isCustom: true
             };
-
-            updateLabel(polarisPos, 'label-polaris');
-            updateLabel(vegaPos, 'label-vega');
-            updateLabel(thubanPos, 'label-thuban');
+            
+            customSims.push(newSim);
+            localStorage.setItem('customSims', JSON.stringify(customSims));
+            
+            // Reset fields
+            nameInput.value = '';
+            codeInput.value = '';
+            
+            toggleAddModal();
+            initDashboard(); // Rebuild menu
+            
+            // Instantly load the new one
+            loadSim(newSim.id, newSim.title, null, true, false);
         }
 
-        function updateUIData() {
-            const currentYear = Math.floor(cycleProgress * CYCLE_YEARS);
-            document.getElementById('year-display').innerText = currentYear.toLocaleString();
-
-            const progressCircle = document.getElementById('cycle-progress');
-            const offset = 251.2 - (cycleProgress * 251.2);
-            progressCircle.style.strokeDashoffset = offset;
-
-            const iconEl = document.getElementById('era-icon');
-            if (cycleProgress < 0.1 || cycleProgress > 0.9) iconEl.innerText = "🌟";
-            else if (cycleProgress > 0.4 && cycleProgress < 0.6) iconEl.innerText = "✨";
-            else iconEl.innerText = "⏳";
+        // Delete Custom Sim
+        function deleteCustomSim(e, id) {
+            e.stopPropagation(); // prevent triggering the loadSim click
+            if (confirm("Are you sure you want to delete this custom simulation?")) {
+                let customSims = JSON.parse(localStorage.getItem('customSims') || '[]');
+                customSims = customSims.filter(s => s.id !== id);
+                localStorage.setItem('customSims', JSON.stringify(customSims));
+                initDashboard();
+            }
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
+        // Hide/Show Boxes using cross-origin injection where possible
+        function toggleBoxes() {
+            const frame = document.getElementById('sim-frame');
+            
+            // First try calling an injected function
+            try {
+                if (frame.contentWindow && frame.contentWindow.toggleBoxes) {
+                    frame.contentWindow.toggleBoxes();
+                } else if (frame.contentDocument) {
+                    // Fallback direct toggle
+                    frame.contentDocument.body.classList.toggle('hide-boxes');
+                }
+            } catch(e) {
+                console.warn("Cross-origin iframe limitation prevents box minimizing for this file.");
+            }
+            
+            const icon = document.getElementById('box-toggle-icon');
+            if (icon.classList.contains('fa-eye')) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
 
-            // Time step scaling based on user slider
-            const timeScale = animationSpeed / 0.001;
+        // Core Load Logic
+        function loadSim(id, title, url, isCustom, isHome) {
+            // Reset box toggle icon
+            const icon = document.getElementById('box-toggle-icon');
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
 
-            if (earth) earth.rotation.y += earthRotationSpeed * (timeScale > 0 ? 1 : 0);
+            // Update UI Menu Selection
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const selectedBtn = document.getElementById('nav-' + id);
+            if(selectedBtn) selectedBtn.classList.add('active');
+            
+            document.getElementById('current-title').textContent = title;
+            
+            // Set matching icon
+            const data = getCombinedMenuData();
+            const itemObj = data.flatMap(g => g.items).find(i => i.id === id);
+            if(itemObj) document.getElementById('current-icon').className = `fas ${itemObj.icon} text-sky-400`;
 
-            if (animationSpeed > 0) {
-                // Precession
-                precessionGroup.rotation.y += animationSpeed;
-                if (precessionGroup.rotation.y >= Math.PI * 2) precessionGroup.rotation.y -= Math.PI * 2;
-                cycleProgress = precessionGroup.rotation.y / (Math.PI * 2);
-
-                // Planetary Orbits (Scaled so Earth moves visibly but smoothly)
-                earthOrbitGroup.rotation.y += earthOrbitSpeedBase * timeScale;
-                planetMeshes.forEach(p => { p.group.rotation.y += p.speed * timeScale; });
+            // Auto-hide mobile sidebar
+            if(window.innerWidth < 768) {
+                const sidebar = document.getElementById('sidebar');
+                if(!sidebar.classList.contains('-translate-x-full')) toggleSidebar();
             }
 
-            // Lock camera target to Earth's current world position
-            const earthWorldPos = new THREE.Vector3();
-            earthPositionGroup.getWorldPosition(earthWorldPos);
-            controls.target.copy(earthWorldPos);
+            const loader = document.getElementById('loader');
+            const iframeContainer = document.getElementById('iframe-container');
+            
+            // Animate transition
+            const oldFrame = document.getElementById('sim-frame');
+            if (oldFrame) oldFrame.classList.add('fade-out');
+            loader.style.opacity = '1';
 
-            controls.update();
-            updateLabels2D();
-            updateUIData();
-            renderer.render(scene, camera);
-
-            // Record Canvas Composite
-            if (isRecording && recordCtx) {
-                recordCtx.fillStyle = '#030305';
-                recordCtx.fillRect(0, 0, 1920, 1080);
-
-                const aspect = renderer.domElement.width / renderer.domElement.height;
-                let drawWidth = 1920, drawHeight = 1920 / aspect;
-                if (drawHeight > 1080) { drawHeight = 1080; drawWidth = 1080 * aspect; }
-                const dx = (1920 - drawWidth) / 2, dy = (1080 - drawHeight) / 2;
+            setTimeout(() => {
+                // Clear previous contexts entirely to prevent WebGL memory leaks
+                iframeContainer.innerHTML = ''; 
                 
-                recordCtx.drawImage(renderer.domElement, dx, dy, drawWidth, drawHeight);
+                const newFrame = document.createElement('iframe');
+                newFrame.id = 'sim-frame';
+                newFrame.className = 'w-full h-full border-0 fade-out';
+                newFrame.title = 'Simulation View';
+                newFrame.sandbox = 'allow-scripts allow-same-origin';
 
-                // UI Background Plate
-                recordCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-                recordCtx.beginPath();
-                if (recordCtx.roundRect) recordCtx.roundRect(40, 40, 520, 150, 16);
-                else recordCtx.fillRect(40, 40, 520, 150);
-                recordCtx.fill();
-                recordCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                recordCtx.lineWidth = 2;
-                recordCtx.stroke();
-
-                const currentYear = Math.floor(cycleProgress * CYCLE_YEARS);
-                recordCtx.fillStyle = '#ffffff';
-                recordCtx.font = 'bold 36px "Segoe UI", sans-serif';
-                recordCtx.textBaseline = 'alphabetic';
-                recordCtx.fillText("Earth's Precession", 70, 90);
-
-                recordCtx.fillStyle = '#60a5fa';
-                recordCtx.font = 'bold 44px monospace';
-                recordCtx.fillText(`Year: ${currentYear.toLocaleString()}`, 70, 145);
-
-                let eraText = "Transition ⏳";
-                if (cycleProgress < 0.1 || cycleProgress > 0.9) eraText = "Polaris Era 🌟";
-                else if (cycleProgress > 0.4 && cycleProgress < 0.6) eraText = "Vega Era ✨";
+                // Load Logic
+                if (isCustom) {
+                    const customSims = JSON.parse(localStorage.getItem('customSims') || '[]');
+                    const sim = customSims.find(s => s.id === id);
+                    if(sim) newFrame.srcdoc = sim.code;
+                } else if (isHome) {
+                    newFrame.srcdoc = homeHTML; // Loads our helpful explainer screen!
+                } else {
+                    newFrame.src = url; // Directly loads your unmodified original file
+                }
                 
-                recordCtx.fillStyle = '#cbd5e1'; 
-                recordCtx.font = '26px "Segoe UI", sans-serif';
-                recordCtx.fillText(eraText, 350, 140);
+                newFrame.onload = () => {
+                    loader.style.opacity = '0';
+                    newFrame.classList.remove('fade-out');
+                    newFrame.classList.add('fade-in');
 
-                const drawLabel = (localPos, text, color) => {
-                    const worldPos = localPos.clone().applyMatrix4(earthPositionGroup.matrixWorld);
-                    worldPos.project(camera);
-                    if (worldPos.z > 1) return;
-                    
-                    const x = dx + (worldPos.x * 0.5 + 0.5) * drawWidth;
-                    const y = dy + (worldPos.y * -0.5 + 0.5) * drawHeight;
-
-                    recordCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-                    recordCtx.font = 'bold 22px "Segoe UI", sans-serif';
-                    const textWidth = recordCtx.measureText(text).width;
-                    
-                    recordCtx.beginPath();
-                    if (recordCtx.roundRect) recordCtx.roundRect(x - textWidth/2 - 15, y - 55, textWidth + 30, 44, 22);
-                    else recordCtx.fillRect(x - textWidth/2 - 15, y - 55, textWidth + 30, 44);
-                    recordCtx.fill();
-                    recordCtx.strokeStyle = 'rgba(255,255,255,0.4)';
-                    recordCtx.lineWidth = 1.5;
-                    recordCtx.stroke();
-
-                    recordCtx.fillStyle = color;
-                    recordCtx.textBaseline = 'middle';
-                    recordCtx.fillText(text, x - textWidth/2, y - 33);
+                    // Try to inject box-toggling CSS if same-origin permits
+                    try {
+                        const doc = newFrame.contentDocument;
+                        if (doc && !doc.getElementById('dashboard-injected-styles')) {
+                            const style = doc.createElement('style');
+                            style.id = 'dashboard-injected-styles';
+                            style.innerHTML = `
+                                body { touch-action: none !important; }
+                                canvas { touch-action: none !important; outline: none; }
+                                .glass-panel, .ui-panel, div[class*="backdrop-blur"] { -webkit-backdrop-filter: blur(12px) !important; }
+                                body.hide-boxes .glass-panel, 
+                                body.hide-boxes .ui-panel, 
+                                body.hide-boxes #ui-layer, 
+                                body.hide-boxes div[class*="bg-black"], 
+                                body.hide-boxes #labels-container { opacity: 0 !important; pointer-events: none !important; }
+                                .glass-panel, .ui-panel, #ui-layer, div[class*="bg-black"], #labels-container { transition: opacity 0.3s ease; }
+                            `;
+                            doc.head.appendChild(style);
+                        }
+                    } catch(e) {}
                 };
 
-                drawLabel(polarisPos, "Polaris", "#93c5fd");
-                drawLabel(vegaPos, "Vega", "#5eead4");
-                drawLabel(thubanPos, "Thuban", "#d8b4fe");
-            }
+                iframeContainer.appendChild(newFrame);
+            }, 300);
         }
+
+        // Initialize App
+        initDashboard();
     </script>
 </body>
 </html>
