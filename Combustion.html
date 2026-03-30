@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planetary Combustion Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; color: white; font-family: sans-serif; }
+        canvas { display: block; }
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            max-width: 380px;
+            /* Added WebKit prefix for Safari support */
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .control-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        select, input { width: 100%; background: #111; border: 1px solid #333; color: white; padding: 8px; border-radius: 6px; font-size: 0.9rem; }
+        .legend { font-size: 0.75rem; margin-top: 10px; color: #bbb; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        
+        .toggle-container { display: flex; background: #111; border-radius: 8px; padding: 4px; margin-bottom: 15px; border: 1px solid #333; }
+        .toggle-btn { flex: 1; text-align: center; padding: 8px; cursor: pointer; border-radius: 6px; font-size: 0.85rem; transition: all 0.2s; }
+        .toggle-btn.active { background: #f97316; color: white; font-weight: bold; }
+
+        .status-indicator {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .state-visible { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+        .state-combust { background: rgba(239, 68, 68, 0.3); color: #fca5a5; border: 1px solid #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); animation: pulse 1s infinite alternate; }
+
+        .info-box {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(255, 165, 0, 0.1);
+            border: 1px solid rgba(255, 165, 0, 0.3);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            color: #d1d5db;
+        }
+
+        @keyframes pulse { 
+            0% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); } 
+            100% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.8); } 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-panel">
+        <div class="flex justify-between items-center mb-1">
+            <h1 class="text-xl font-bold">Planetary Combustion</h1>
+            <button id="toggleBtn" class="bg-gray-800 hover:bg-gray-700 text-white rounded px-2 leading-none py-1 text-lg transition-colors" title="Minimize/Maximize">&minus;</button>
+        </div>
+        
+        <div id="panelContent">
+            <p class="text-xs text-gray-400 mb-4">When planets disappear into the Sun's glare</p>
+            
+            <div class="toggle-container">
+                <div id="btnHelio" class="toggle-btn active">Heliocentric View</div>
+                <div id="btnGeo" class="toggle-btn">Geocentric View</div>
+            </div>
+
+            <div class="control-group">
+                <label>Select Planet</label>
+                <select id="planetSelector">
+                    <option value="mercury">Mercury</option>
+                    <option value="venus" selected>Venus</option>
+                    <option value="mars">Mars</option>
+                    <option value="jupiter">Jupiter</option>
+                    <option value="saturn">Saturn</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Simulation Speed</label>
+                <input type="range" id="simSpeed" min="0" max="5" step="0.1" value="1">
+            </div>
+
+            <div class="control-group">
+                <label class="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="checkbox" id="showNodes" checked> Show Lunar Nodes
+                </label>
+            </div>
+
+            <!-- Dynamic Status Display -->
+            <div id="statusIndicator" class="state-visible">
+                <div>VISIBLE</div>
+                <div class="text-xs font-normal mt-1 opacity-80" id="angleDisplay">Separation: 0.0°</div>
+            </div>
+
+            <div class="info-box">
+                <b>What is Combustion?</b><br>
+                When a planet is within <b>8.5°</b> of the Sun from Earth's perspective, it becomes completely invisible, "burnt up" by the Sun's glare. Watch the separation angle!
+            </div>
+
+            <div class="legend mt-4">
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-yellow-400 rounded-full"></span> Sun</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> Earth</div>
+                <div class="flex items-center gap-2" id="planetLegend"><span class="w-3 h-3 bg-orange-200 rounded-full"></span> Venus</div>
+                <div class="flex items-center gap-2"><span class="w-6 h-0.5 bg-yellow-200 opacity-50"></span> Line of Sight</div>
+                <div class="flex items-center gap-2 node-legend"><span class="w-3 h-3 bg-gray-200 rounded-full"></span> Moon</div>
+                <div class="flex items-center gap-2 node-legend"><span class="w-3 h-3 bg-green-500 rounded-full"></span> Asc Node</div>
+                <div class="flex items-center gap-2 node-legend"><span class="w-3 h-3 bg-red-500 rounded-full"></span> Desc Node</div>
+                <div class="flex items-center gap-2 node-legend"><span class="w-6 h-0.5 bg-cyan-400 opacity-50"></span> Lunar Orbit</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let sun, earthSystem, earth, planet, sunGlare;
+        let lunarSystem, moon, nodesGroup;
+        let earthOrbitHelio, planetOrbitHelio;
+        let sunPathGeo, planetPathGeo;
+        let sightLineSun, sightLinePlanet, combustionCone;
+        
+        let clock = new THREE.Clock();
+        let currentMode = 'helio'; // 'helio' or 'geo'
+        let currentPlanetKey = 'venus';
+        
+        const COMBUSTION_THRESHOLD = 8.5; // Degrees
+        
+        // Orbital Data (Radii and relative speeds)
+        const R_EARTH = 30;
+        const SPEED_EARTH = 0.5;
+        
+        const planetData = {
+            mercury: { r: 11.6, speed: 1.60, color: 0xaaaaaa, name: 'Mercury' },
+            venus: { r: 21.6, speed: 0.81, color: 0xffeebb, name: 'Venus' },
+            mars: { r: 45.7, speed: 0.26, color: 0xff4422, name: 'Mars' },
+            jupiter: { r: 120.0, speed: 0.10, color: 0xffa500, name: 'Jupiter' },
+            saturn: { r: 180.0, speed: 0.05, color: 0xead6b8, name: 'Saturn' }
+        };
+
+        let angleEarth = 0;
+        let anglePlanet = 0;
+        let angleMoon = 0;
+        let angleNode = 0;
+        
+        const R_MOON = 6;
+        const SPEED_MOON = 6.0;
+        const SPEED_NODE = 0.5;
+        const ORBIT_TILT = 15 * (Math.PI / 180);
+        
+        let geoSunPoints = [];
+        let geoPlanetPoints = [];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 70, 90);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lights
+            scene.add(new THREE.AmbientLight(0x404040, 1.5));
+            const pointLight = new THREE.PointLight(0xffffff, 2.5);
+            scene.add(pointLight);
+
+            // Sun & Glare
+            sun = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffdd00 }));
+            scene.add(sun);
+            
+            // The Sun's Glare (Combustion Zone Representation)
+            sunGlare = new THREE.Mesh(
+                new THREE.SphereGeometry(4.5, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, depthWrite: false })
+            );
+            sun.add(sunGlare);
+
+            // Earth System
+            earthSystem = new THREE.Group();
+            scene.add(earthSystem);
+
+            // Earth
+            earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 32), new THREE.MeshPhongMaterial({ color: 0x2244ff }));
+            earthSystem.add(earth);
+
+            // Lunar System (Moon & Tilted Orbit)
+            lunarSystem = new THREE.Group();
+            earthSystem.add(lunarSystem);
+
+            const lunarOrbitRing = new THREE.Mesh(
+                new THREE.RingGeometry(R_MOON - 0.1, R_MOON + 0.1, 64),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true, opacity: 0.3 })
+            );
+            lunarOrbitRing.rotation.x = Math.PI / 2 + ORBIT_TILT;
+            lunarSystem.add(lunarOrbitRing);
+
+            moon = new THREE.Mesh(new THREE.SphereGeometry(0.6, 24, 24), new THREE.MeshPhongMaterial({ color: 0xdddddd }));
+            lunarSystem.add(moon);
+
+            // Lunar Nodes
+            nodesGroup = new THREE.Group();
+            earthSystem.add(nodesGroup);
+
+            const nodeLineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-R_MOON * 1.2, 0, 0),
+                new THREE.Vector3(R_MOON * 1.2, 0, 0)
+            ]);
+            const nodeLine = new THREE.Line(nodeLineGeo, new THREE.LineDashedMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, dashSize: 0.5, gapSize: 0.5 }));
+            nodeLine.computeLineDistances();
+            nodesGroup.add(nodeLine);
+
+            const ascNode = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
+            ascNode.position.set(R_MOON, 0, 0);
+            nodesGroup.add(ascNode);
+
+            const descNode = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+            descNode.position.set(-R_MOON, 0, 0);
+            nodesGroup.add(descNode);
+
+            // Planet
+            planet = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), new THREE.MeshPhongMaterial({ color: 0xffffff }));
+            scene.add(planet);
+
+            // Orbit Rings (Heliocentric)
+            earthOrbitHelio = new THREE.Mesh(
+                new THREE.RingGeometry(R_EARTH - 0.1, R_EARTH + 0.1, 128),
+                new THREE.MeshBasicMaterial({ color: 0x4444ff, side: THREE.DoubleSide, transparent: true, opacity: 0.2 })
+            );
+            earthOrbitHelio.rotation.x = Math.PI / 2;
+            scene.add(earthOrbitHelio);
+
+            planetOrbitHelio = new THREE.Mesh(
+                new THREE.RingGeometry(1, 1.2, 128), // Updated dynamically
+                new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.2 })
+            );
+            planetOrbitHelio.rotation.x = Math.PI / 2;
+            scene.add(planetOrbitHelio);
+
+            // Path Traces (Geocentric) - Safari Fix: Initialize with dummy points
+            sunPathGeo = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), 
+                new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.5 })
+            );
+            sunPathGeo.visible = false;
+            scene.add(sunPathGeo);
+            
+            planetPathGeo = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), 
+                new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })
+            );
+            planetPathGeo.visible = false;
+            scene.add(planetPathGeo);
+
+            // Sight Lines from Earth
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(1,0,0)]);
+            sightLineSun = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xffdd00, transparent: true, opacity: 0.8, dashSize: 1, gapSize: 0.5 }));
+            sightLineSun.computeLineDistances();
+            scene.add(sightLineSun);
+
+            sightLinePlanet = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
+            scene.add(sightLinePlanet);
+
+            // Stars
+            const starGeo = new THREE.BufferGeometry();
+            const starCoords = [];
+            for(let i=0; i<6000; i++) {
+                starCoords.push((Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.5 })));
+
+            // Events
+            window.addEventListener('resize', onWindowResize, false);
+            
+            document.getElementById('btnHelio').addEventListener('click', () => setMode('helio'));
+            document.getElementById('btnGeo').addEventListener('click', () => setMode('geo'));
+            
+            document.getElementById('planetSelector').addEventListener('change', (e) => {
+                currentPlanetKey = e.target.value;
+                updatePlanetData();
+            });
+
+            // Panel Toggle Logic
+            document.getElementById('toggleBtn').addEventListener('click', function() {
+                const content = document.getElementById('panelContent');
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    this.innerHTML = '&minus;';
+                } else {
+                    content.style.display = 'none';
+                    this.innerHTML = '&plus;';
+                }
+            });
+
+            updatePlanetData();
+            setMode('helio');
+            animate();
+        }
+
+        function updatePlanetData() {
+            const data = planetData[currentPlanetKey];
+            planet.material.color.setHex(data.color);
+            planetOrbitHelio.material.color.setHex(data.color);
+            planetPathGeo.material.color.setHex(data.color);
+            sightLinePlanet.material.color.setHex(data.color);
+            
+            // Rebuild helio ring safely
+            planetOrbitHelio.geometry.dispose();
+            planetOrbitHelio.geometry = new THREE.RingGeometry(data.r - 0.1, data.r + 0.1, 128);
+            
+            // Reset Geo Traces Safely
+            geoSunPoints = [];
+            geoPlanetPoints = [];
+            sunPathGeo.visible = false;
+            planetPathGeo.visible = false;
+
+            // Update UI
+            document.getElementById('planetLegend').innerHTML = `<span class="w-3 h-3 rounded-full" style="background-color: #${data.color.toString(16)}"></span> ${data.name}`;
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btnHelio').classList.toggle('active', mode === 'helio');
+            document.getElementById('btnGeo').classList.toggle('active', mode === 'geo');
+
+            if (mode === 'helio') {
+                earthOrbitHelio.visible = true;
+                planetOrbitHelio.visible = true;
+                sunPathGeo.visible = false;
+                planetPathGeo.visible = false;
+                controls.target.set(0, 0, 0); // Focus on Sun
+            } else {
+                earthOrbitHelio.visible = false;
+                planetOrbitHelio.visible = false;
+                
+                // Safari Fix: Just hide and clear arrays instead of setting empty buffer geometry
+                geoSunPoints = [];
+                geoPlanetPoints = [];
+                sunPathGeo.visible = false;
+                planetPathGeo.visible = false;
+                
+                controls.target.set(0, 0, 0); // Focus on Earth (which is now at 0,0,0)
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const speed = parseFloat(document.getElementById('simSpeed').value);
+            const data = planetData[currentPlanetKey];
+
+            // Update Moon & Nodes
+            angleMoon += SPEED_MOON * delta * speed;
+            angleNode -= SPEED_NODE * delta * speed; // Retrograde
+
+            const mx = Math.cos(angleMoon) * R_MOON;
+            const mz = Math.sin(angleMoon) * R_MOON;
+            moon.position.set(mx, -mz * Math.sin(ORBIT_TILT), mz * Math.cos(ORBIT_TILT));
+
+            lunarSystem.rotation.y = angleNode;
+            nodesGroup.rotation.y = angleNode;
+
+            // Handle Lunar Nodes Visibility
+            const showNodes = document.getElementById('showNodes').checked;
+            lunarSystem.visible = showNodes;
+            nodesGroup.visible = showNodes;
+            document.querySelectorAll('.node-legend').forEach(el => {
+                el.style.display = showNodes ? 'flex' : 'none';
+            });
+
+            // 1. Calculate underlying Heliocentric Positions
+            angleEarth += SPEED_EARTH * delta * speed;
+            anglePlanet += data.speed * delta * speed;
+
+            const helioEarthPos = new THREE.Vector3(
+                Math.cos(angleEarth) * R_EARTH, 0, Math.sin(angleEarth) * R_EARTH
+            );
+            const helioPlanetPos = new THREE.Vector3(
+                Math.cos(anglePlanet) * data.r, 0, Math.sin(anglePlanet) * data.r
+            );
+            const helioSunPos = new THREE.Vector3(0, 0, 0);
+
+            // 2. Apply coordinates based on current Mode
+            if (currentMode === 'helio') {
+                sun.position.copy(helioSunPos);
+                earthSystem.position.copy(helioEarthPos);
+                planet.position.copy(helioPlanetPos);
+            } else {
+                // Geocentric: Subtract Earth's position from everything to make Earth the center (0,0,0)
+                earthSystem.position.set(0, 0, 0);
+                sun.position.copy(helioSunPos).sub(helioEarthPos);
+                planet.position.copy(helioPlanetPos).sub(helioEarthPos);
+
+                // Trace paths for Geo view (Safari Safe Memory Management)
+                if (speed > 0) {
+                    geoSunPoints.push(sun.position.clone());
+                    geoPlanetPoints.push(planet.position.clone());
+                    
+                    if (geoSunPoints.length > 500) geoSunPoints.shift();
+                    if (geoPlanetPoints.length > 500) geoPlanetPoints.shift();
+                    
+                    if (geoSunPoints.length > 1) {
+                        // Dispose old geometry explicitly to prevent Safari WebGL leaks/crashes
+                        if (sunPathGeo.geometry) sunPathGeo.geometry.dispose();
+                        sunPathGeo.geometry = new THREE.BufferGeometry().setFromPoints(geoSunPoints);
+                        sunPathGeo.visible = true;
+                        
+                        if (planetPathGeo.geometry) planetPathGeo.geometry.dispose();
+                        planetPathGeo.geometry = new THREE.BufferGeometry().setFromPoints(geoPlanetPoints);
+                        planetPathGeo.visible = true;
+                    }
+                }
+            }
+
+            // 3. Sight Lines and Combustion Math
+            sightLineSun.geometry.setFromPoints([earthSystem.position, sun.position]);
+            sightLineSun.computeLineDistances(); // Required to update the dashed line correctly every frame
+            
+            sightLinePlanet.geometry.setFromPoints([earthSystem.position, planet.position]);
+
+            // Vector from Earth to Sun
+            const vecEtoS = new THREE.Vector3().subVectors(sun.position, earthSystem.position).normalize();
+            // Vector from Earth to Planet
+            const vecEtoP = new THREE.Vector3().subVectors(planet.position, earthSystem.position).normalize();
+            
+            // Calculate angle between them in degrees
+            const angleRad = vecEtoS.angleTo(vecEtoP);
+            const angleDeg = THREE.MathUtils.radToDeg(angleRad);
+            
+            // Distance Check
+            const isCombust = angleDeg <= COMBUSTION_THRESHOLD;
+
+            // 4. Update UI & Visuals
+            const indicator = document.getElementById('statusIndicator');
+            document.getElementById('angleDisplay').innerText = `Separation: ${angleDeg.toFixed(1)}°`;
+
+            if (isCombust) {
+                indicator.className = 'status-indicator state-combust';
+                indicator.children[0].innerText = '🔥 IN COMBUSTION';
+                planet.material.color.setHex(0x333333); // Darken planet to show it's "burnt/hidden"
+                planet.material.emissive.setHex(0x000000);
+                sunGlare.scale.setScalar(1.5 + Math.sin(Date.now() * 0.005) * 0.2); // Pulse glare
+            } else {
+                indicator.className = 'status-indicator state-visible';
+                indicator.children[0].innerText = '🟢 VISIBLE';
+                planet.material.color.setHex(data.color);
+                planet.material.emissive.setHex(data.color * 0.2);
+                sunGlare.scale.setScalar(1);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
