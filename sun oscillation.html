@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronized Sun Perspectives</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020617; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; }
+        
+        /* Layout */
+        #split-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; }
+        @media (min-width: 768px) { #split-container { flex-direction: row; } }
+        
+        .view-container { position: relative; width: 100%; height: 50%; overflow: hidden; }
+        @media (min-width: 768px) { .view-container { width: 50%; height: 100%; } }
+        
+        /* Divider */
+        .divider { display: none; width: 4px; background: rgba(255,255,255,0.1); z-index: 20; cursor: col-resize; }
+        @media (min-width: 768px) { .divider { display: block; } }
+
+        /* UI Overlays */
+        #ui-layer { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 50; pointer-events: none; padding: 10px; }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .view-title {
+            position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); padding: 8px 16px;
+            border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); font-weight: bold; pointer-events: none; z-index: 10;
+        }
+
+        /* Labels */
+        .sync-label {
+            position: absolute; transform: translate(-50%, -50%); color: rgba(255, 255, 255, 0.9);
+            font-weight: 700; font-size: 0.85rem; text-shadow: 0px 2px 6px rgba(0,0,0,1);
+            pointer-events: none; transition: opacity 0.2s; white-space: nowrap;
+        }
+        .hidden-label { opacity: 0; }
+
+        /* Custom Slider */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%;
+            background: #facc15; cursor: pointer; margin-top: -7px; box-shadow: 0 0 10px rgba(250, 204, 21, 0.8);
+        }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
+        
+        /* Mobile adjustment for controls */
+        @media (max-width: 767px) {
+            .view-title { font-size: 0.8rem; padding: 4px 8px; top: 10px; left: 10px; }
+            #ui-layer { padding: 5px; }
+            .glass-panel { padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="split-container">
+        <!-- Left: Global Space View -->
+        <div id="view-global" class="view-container">
+            <div class="view-title text-orange-400">☀️ Solar System View (The "Why")</div>
+        </div>
+        
+        <div class="divider"></div>
+
+        <!-- Right: Local Horizon View -->
+        <div id="view-local" class="view-container">
+            <div class="view-title text-sky-400">🧍 Local Horizon View</div>
+            
+            <!-- Compass Labels for Local View -->
+            <div id="label-n" class="sync-label text-red-500 text-2xl">N</div>
+            <div id="label-s" class="sync-label text-2xl">S</div>
+            <div id="label-e" class="sync-label text-2xl">E</div>
+            <div id="label-w" class="sync-label text-2xl">W</div>
+            <div id="label-ne" class="sync-label text-slate-400">NE</div>
+            <div id="label-se" class="sync-label text-slate-400">SE</div>
+        </div>
+    </div>
+
+    <!-- Master UI Controls -->
+    <div id="ui-layer">
+        <div class="glass-panel p-4 max-w-4xl mx-auto pointer-events-auto flex flex-col md:flex-row gap-4 items-center justify-between">
+            
+            <!-- Info Display -->
+            <div class="w-full md:w-1/3 flex justify-between md:flex-col gap-2">
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase">Season / Time of Year</div>
+                    <div class="text-lg font-bold text-white" id="season-display">Equinox</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase">Sun's Declination</div>
+                    <div class="text-lg font-mono font-bold text-yellow-400" id="declination-display">0.0°</div>
+                </div>
+            </div>
+
+            <!-- Interactive Sliders -->
+            <div class="w-full md:w-2/3 flex flex-col gap-4">
+                <div class="w-full flex gap-4">
+                    <div class="w-1/2">
+                        <label class="flex justify-between text-xs font-medium mb-1 text-slate-300">
+                            <span>Time of Year</span>
+                            <span id="speed-indicator" class="text-sky-300">Playing ▶</span>
+                        </label>
+                        <input type="range" id="year-slider" min="0" max="1000" value="500">
+                    </div>
+                    <div class="w-1/2">
+                        <label class="flex justify-between text-xs font-medium mb-1 text-slate-300">
+                            <span>Speed (Slow Motion)</span>
+                            <span id="speed-label" class="text-slate-400">Slow</span>
+                        </label>
+                        <input type="range" id="speed-slider" min="0" max="100" value="15">
+                    </div>
+                </div>
+
+                <div class="w-full">
+                    <label class="flex justify-between text-xs font-medium mb-1 text-slate-300">
+                        <span>Your Latitude (Moves the <span class="text-green-400 font-bold">Green Line</span>)</span>
+                        <span id="lat-display">40° N</span>
+                    </label>
+                    <input type="range" id="lat-slider" min="-80" max="80" value="40">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- SHARED STATE ---
+        let yearProgress = 0.5; // 0=Winter (-23.5), 0.5=Equinox (0), 1=Summer (+23.5)
+        let timeOfDay = 0.5; // 0=midnight, 0.5=noon, 1=midnight
+        let userLatitude = 40;
+        let isPlaying = true;
+        let animationSpeed = 0.00015; // Extremely slow default for clarity
+        let daySpeed = 0.005;         
+
+        const TILT_DEGREES = 23.5;
+        const TILT_RADIANS = THREE.MathUtils.degToRad(TILT_DEGREES);
+
+        // --- GLOBAL VIEW VARIABLES ---
+        let globalScene, globalCamera, globalRenderer, globalControls;
+        let earthOrbitContainer, earthTiltGroup, earthMeshGroup, globalSunMesh, globalSunLight;
+        let userLatitudeRing, sunRayLine, subsolarPointMesh;
+        const EARTH_RADIUS = 6;
+        const ORBIT_DISTANCE = 40;
+
+        // --- LOCAL VIEW VARIABLES ---
+        let localScene, localCamera, localRenderer, localControls;
+        let localSunMesh, localSunLight;
+        let pathSummer, pathEquinox, pathWinter;
+        let sunriseMarker;
+        const SKY_RADIUS = 100;
+        const GROUND_RADIUS = 100;
+        
+        // Z is North(-)/South(+), X is East(+)/West(-)
+        const compassPoints = {
+            'label-n': new THREE.Vector3(0, 0, -GROUND_RADIUS * 0.8),
+            'label-s': new THREE.Vector3(0, 0, GROUND_RADIUS * 0.8),
+            'label-e': new THREE.Vector3(GROUND_RADIUS * 0.8, 0, 0),
+            'label-w': new THREE.Vector3(-GROUND_RADIUS * 0.8, 0, 0),
+            'label-ne': new THREE.Vector3(GROUND_RADIUS * 0.6, 0, -GROUND_RADIUS * 0.6),
+            'label-se': new THREE.Vector3(GROUND_RADIUS * 0.6, 0, GROUND_RADIUS * 0.6)
+        };
+
+        window.onload = function() {
+            initGlobalView();
+            initLocalView();
+            setupUI();
+            updateLocalReferencePaths();
+            updateGlobalLatitudeRing();
+            animate();
+        };
+
+        // --- UTILS ---
+        function createEarthTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0f2b4a'; ctx.fillRect(0, 0, 512, 256);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1;
+            for (let i = 0; i <= 256; i += 32) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke(); }
+            for (let i = 0; i <= 512; i += 64) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke(); }
+            ctx.fillStyle = '#1e5c3a';
+            let seed = 42; function random() { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
+            for (let i = 0; i < 200; i++) {
+                const x = random() * 512, y = random() * 256;
+                if (y < 20 || y > 236) continue;
+                ctx.beginPath(); ctx.arc(x, y, random() * 15 + 3, 0, Math.PI * 2); ctx.fill();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- INIT GLOBAL VIEW ---
+        function initGlobalView() {
+            const container = document.getElementById('view-global');
+            globalScene = new THREE.Scene();
+            globalScene.background = new THREE.Color('#050508');
+
+            globalCamera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 1000);
+            globalCamera.position.set(0, 30, 80);
+
+            globalRenderer = new THREE.WebGLRenderer({ antialias: true });
+            globalRenderer.setSize(container.clientWidth, container.clientHeight);
+            globalRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(globalRenderer.domElement);
+
+            globalControls = new THREE.OrbitControls(globalCamera, globalRenderer.domElement);
+            globalControls.enableDamping = true; globalControls.dampingFactor = 0.05;
+
+            globalScene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
+            // Sun at the Center (Heliocentric)
+            globalSunMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(8, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffea00 })
+            );
+            globalScene.add(globalSunMesh);
+            
+            const glow = new THREE.Mesh(
+                new THREE.SphereGeometry(10, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending })
+            );
+            globalSunMesh.add(glow);
+
+            globalSunLight = new THREE.PointLight(0xffffff, 2.5, 500);
+            globalScene.add(globalSunLight);
+
+            const orbitRing = new THREE.Mesh(
+                new THREE.RingGeometry(ORBIT_DISTANCE - 0.2, ORBIT_DISTANCE + 0.2, 128),
+                new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.15 })
+            );
+            orbitRing.rotation.x = Math.PI / 2;
+            globalScene.add(orbitRing);
+
+            earthOrbitContainer = new THREE.Group();
+            globalScene.add(earthOrbitContainer);
+
+            earthTiltGroup = new THREE.Group();
+            earthTiltGroup.rotation.z = -TILT_RADIANS; 
+            earthOrbitContainer.add(earthTiltGroup);
+
+            earthMeshGroup = new THREE.Group();
+            earthTiltGroup.add(earthMeshGroup);
+
+            const earthMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(EARTH_RADIUS, 64, 64),
+                new THREE.MeshPhongMaterial({ map: createEarthTexture(), shininess: 5 })
+            );
+            earthMeshGroup.add(earthMesh);
+
+            earthTiltGroup.add(new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, EARTH_RADIUS * 2.8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xef4444 })
+            ));
+            
+            const createPoleLabel = (text, y) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'white'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'center'; ctx.fillText(text, 32, 24);
+                const tex = new THREE.CanvasTexture(canvas);
+                const spriteMat = new THREE.SpriteMaterial({ map: tex });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.position.y = y; sprite.scale.set(4, 2, 1);
+                return sprite;
+            };
+            earthTiltGroup.add(createPoleLabel("N", EARTH_RADIUS * 1.6));
+            earthTiltGroup.add(createPoleLabel("S", -EARTH_RADIUS * 1.6));
+
+            const createRing = (radius, y, color) => {
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(radius, 0.08, 8, 64),
+                    new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.6 })
+                );
+                ring.rotation.x = Math.PI / 2; ring.position.y = y;
+                return ring;
+            };
+            
+            const tropicR = (EARTH_RADIUS + 0.1) * Math.cos(TILT_RADIANS);
+            const tropicY = (EARTH_RADIUS + 0.1) * Math.sin(TILT_RADIANS);
+            earthTiltGroup.add(createRing(EARTH_RADIUS + 0.1, 0, 0xef4444)); 
+            earthTiltGroup.add(createRing(tropicR, tropicY, 0xf97316)); 
+            earthTiltGroup.add(createRing(tropicR, -tropicY, 0xf97316)); 
+
+            userLatitudeRing = new THREE.Mesh(
+                new THREE.TorusGeometry(EARTH_RADIUS + 0.2, 0.15, 8, 64),
+                new THREE.MeshBasicMaterial({ color: 0x4ade80 }) 
+            );
+            userLatitudeRing.rotation.x = Math.PI / 2;
+            earthTiltGroup.add(userLatitudeRing);
+
+            const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(1,0,0)]);
+            sunRayLine = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xfacc15, linewidth: 2, transparent: true, opacity: 0.8 }));
+            globalScene.add(sunRayLine);
+
+            subsolarPointMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xffea00 })
+            );
+            globalScene.add(subsolarPointMesh);
+        }
+
+        // --- INIT LOCAL VIEW ---
+        function initLocalView() {
+            const container = document.getElementById('view-local');
+            localScene = new THREE.Scene();
+            
+            localCamera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 500);
+            
+            // FIX: Start the camera on the North-West side looking South-East so the sun is instantly visible
+            localCamera.position.set(-50, 20, -60);
+
+            localRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            localRenderer.setSize(container.clientWidth, container.clientHeight);
+            localRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            localRenderer.setClearColor(0x020617);
+            container.appendChild(localRenderer.domElement);
+
+            localControls = new THREE.OrbitControls(localCamera, localRenderer.domElement);
+            localControls.enableDamping = true; localControls.dampingFactor = 0.05;
+            localControls.maxPolarAngle = Math.PI / 2 + 0.02; // Prevent going deeply underground
+            localControls.maxDistance = GROUND_RADIUS - 10;
+            localControls.target.set(0, 5, 0); // Look slightly up toward the sky center
+            localControls.update();
+
+            localScene.add(new THREE.AmbientLight(0xffffff, 0.1));
+
+            // Ground Disk
+            const groundPlane = new THREE.Mesh(
+                new THREE.CylinderGeometry(GROUND_RADIUS, GROUND_RADIUS, 1, 64),
+                new THREE.MeshPhongMaterial({ color: 0x064e3b, shininess: 0 })
+            );
+            groundPlane.position.y = -0.5;
+            localScene.add(groundPlane);
+
+            // Ground Grid helper to provide better depth perception
+            const gridHelper = new THREE.PolarGridHelper(GROUND_RADIUS, 12, 8, 64, 0xffffff, 0xffffff);
+            gridHelper.material.opacity = 0.15;
+            gridHelper.material.transparent = true;
+            gridHelper.position.y = 0.02;
+            localScene.add(gridHelper);
+
+            // Horizon Ring
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(GROUND_RADIUS - 0.5, GROUND_RADIUS + 0.5, 64),
+                new THREE.MeshBasicMaterial({ color: 0x334155, side: THREE.DoubleSide })
+            );
+            ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03;
+            localScene.add(ring);
+
+            // Compass Base Lines
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.5 });
+            localScene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.1, -GROUND_RADIUS), new THREE.Vector3(0, 0.1, GROUND_RADIUS)]), lineMat));
+            localScene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-GROUND_RADIUS, 0.1, 0), new THREE.Vector3(GROUND_RADIUS, 0.1, 0)]), lineMat));
+
+            // Sun Mesh
+            localSunMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(3, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffea00 })
+            );
+            localSunMesh.add(new THREE.Mesh(
+                new THREE.SphereGeometry(6, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending })
+            ));
+            localScene.add(localSunMesh);
+
+            localSunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            localScene.add(localSunLight);
+            
+            // Sunrise Location Marker
+            sunriseMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(1.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xffea00 })
+            );
+            sunriseMarker.add(new THREE.Mesh(
+                new THREE.SphereGeometry(4, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+            ));
+            localScene.add(sunriseMarker);
+            
+            // NOTE: I removed the opaque skyDome mesh that was blocking the scene's dynamic background colors.
+        }
+
+        // --- MATH & UPDATES ---
+        function getLocalSunPosition(declinationDeg, hourAngleRad, latitudeDeg) {
+            const dec = THREE.MathUtils.degToRad(declinationDeg);
+            const lat = THREE.MathUtils.degToRad(latitudeDeg);
+            const H = hourAngleRad;
+            
+            const sinAlt = Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(H);
+            const alt = Math.asin(sinAlt);
+            
+            const cosAz = (Math.sin(dec) - Math.sin(lat) * Math.sin(alt)) / (Math.cos(lat) * Math.cos(alt));
+            let az = Math.acos(Math.max(-1, Math.min(1, cosAz)));
+            if (Math.sin(H) > 0) az = 2 * Math.PI - az;
+            
+            return new THREE.Vector3(
+                SKY_RADIUS * Math.cos(alt) * Math.sin(az), // X = East
+                SKY_RADIUS * Math.sin(alt),                // Y = Up
+                -SKY_RADIUS * Math.cos(alt) * Math.cos(az) // Z = North
+            );
+        }
+
+        function createLocalSunPath(declinationDeg, colorHex) {
+            const points = [];
+            for (let h = -Math.PI; h <= Math.PI; h += 0.05) {
+                const pos = getLocalSunPosition(declinationDeg, h, userLatitude);
+                if (pos.y > -5) points.push(pos);
+            }
+            return new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(points),
+                new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.6, linewidth: 2 })
+            );
+        }
+
+        function updateLocalReferencePaths() {
+            if (pathSummer) localScene.remove(pathSummer);
+            if (pathEquinox) localScene.remove(pathEquinox);
+            if (pathWinter) localScene.remove(pathWinter);
+            
+            pathSummer = createLocalSunPath(23.5, 0xf97316);  // Orange
+            pathEquinox = createLocalSunPath(0, 0xffffff);    // White
+            pathWinter = createLocalSunPath(-23.5, 0x60a5fa); // Blue
+            
+            localScene.add(pathSummer); 
+            localScene.add(pathEquinox); 
+            localScene.add(pathWinter);
+        }
+
+        function updateGlobalLatitudeRing() {
+            const latRad = THREE.MathUtils.degToRad(userLatitude);
+            const radius = (EARTH_RADIUS + 0.2) * Math.cos(latRad);
+            const yPos = (EARTH_RADIUS + 0.2) * Math.sin(latRad);
+            
+            userLatitudeRing.geometry.dispose();
+            userLatitudeRing.geometry = new THREE.TorusGeometry(radius, 0.15, 8, 64);
+            userLatitudeRing.position.y = yPos;
+        }
+
+        // --- UI SETUP ---
+        function setupUI() {
+            const yearSlider = document.getElementById('year-slider');
+            const latSlider = document.getElementById('lat-slider');
+            const speedIndicator = document.getElementById('speed-indicator');
+
+            window.addEventListener('resize', () => {
+                const globalCont = document.getElementById('view-global');
+                globalCamera.aspect = globalCont.clientWidth / globalCont.clientHeight;
+                globalCamera.updateProjectionMatrix();
+                globalRenderer.setSize(globalCont.clientWidth, globalCont.clientHeight);
+
+                const localCont = document.getElementById('view-local');
+                localCamera.aspect = localCont.clientWidth / localCont.clientHeight;
+                localCamera.updateProjectionMatrix();
+                localRenderer.setSize(localCont.clientWidth, localCont.clientHeight);
+            });
+
+            const speedSlider = document.getElementById('speed-slider');
+            speedSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                if (val === 0) {
+                    isPlaying = false;
+                    speedIndicator.innerText = "Paused ⏸";
+                    speedIndicator.className = "text-slate-400";
+                    document.getElementById('speed-label').innerText = "Paused";
+                } else {
+                    isPlaying = true;
+                    animationSpeed = (val / 100) * 0.001;
+                    daySpeed = (val / 100) * 0.05;
+                    speedIndicator.innerText = "Playing ▶";
+                    speedIndicator.className = "text-sky-300";
+                    document.getElementById('speed-label').innerText = val < 30 ? "Slow" : (val < 70 ? "Normal" : "Fast");
+                }
+            });
+
+            yearSlider.addEventListener('input', (e) => {
+                yearProgress = parseInt(e.target.value) / 1000;
+                isPlaying = false; 
+                speedIndicator.innerText = "Paused ⏸";
+                speedIndicator.className = "text-slate-400";
+            });
+
+            latSlider.addEventListener('input', (e) => {
+                userLatitude = parseInt(e.target.value);
+                const dir = userLatitude >= 0 ? 'N' : 'S';
+                document.getElementById('lat-display').innerText = `${Math.abs(userLatitude)}° ${dir}`;
+                updateLocalReferencePaths();
+                updateGlobalLatitudeRing();
+            });
+        }
+
+        function updateCompassLabels2D() {
+            for (const [id, pos] of Object.entries(compassPoints)) {
+                const el = document.getElementById(id);
+                const tempV = pos.clone();
+                tempV.project(localCamera);
+                
+                // Hide if behind camera
+                if (tempV.z > 1) { 
+                    el.classList.add('hidden-label'); 
+                    continue; 
+                }
+                
+                const cont = document.getElementById('view-local');
+                const x = (tempV.x * 0.5 + 0.5) * cont.clientWidth;
+                const y = (tempV.y * -0.5 + 0.5) * cont.clientHeight;
+                el.style.left = `${x}px`; 
+                el.style.top = `${y}px`;
+                el.classList.remove('hidden-label');
+            }
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isPlaying) {
+                yearProgress += animationSpeed;
+                if (yearProgress > 1) yearProgress -= 1;
+                document.getElementById('year-slider').value = Math.floor(yearProgress * 1000);
+                
+                timeOfDay += daySpeed;
+                if (timeOfDay > 1) timeOfDay -= 1;
+            }
+
+            // 1. Calculate Shared Declination
+            const declinationDeg = -23.5 * Math.cos(yearProgress * Math.PI * 2);
+
+            // 2. Update Global View (Heliocentric)
+            earthMeshGroup.rotation.y = timeOfDay * Math.PI * 2;
+            
+            const theta = yearProgress * Math.PI * 2;
+            earthOrbitContainer.position.set(
+                Math.cos(theta) * ORBIT_DISTANCE,
+                0,
+                Math.sin(theta) * ORBIT_DISTANCE
+            );
+            
+            const earthPos = earthOrbitContainer.position;
+            sunRayLine.geometry.setFromPoints([new THREE.Vector3(0,0,0), earthPos]);
+            
+            const direction = earthPos.clone().normalize();
+            subsolarPointMesh.position.copy(direction).multiplyScalar(ORBIT_DISTANCE - EARTH_RADIUS);
+
+            globalControls.target.copy(earthPos);
+            globalControls.update();
+            globalRenderer.render(globalScene, globalCamera);
+
+            // 3. Update Local View
+            const currentHourAngle = (timeOfDay - 0.5) * Math.PI * 2;
+            const newLocalPos = getLocalSunPosition(declinationDeg, currentHourAngle, userLatitude);
+            
+            localSunMesh.position.copy(newLocalPos);
+
+            // Update Sunrise Marker Position on the Horizon
+            const latRad = THREE.MathUtils.degToRad(userLatitude);
+            const decRad = THREE.MathUtils.degToRad(declinationDeg);
+            const cosAzRise = Math.sin(decRad) / Math.cos(latRad);
+            
+            if (cosAzRise >= -1 && cosAzRise <= 1) {
+                sunriseMarker.visible = true;
+                const azRise = Math.acos(cosAzRise);
+                sunriseMarker.position.set(
+                    GROUND_RADIUS * Math.sin(azRise),
+                    0.5, // Placed slightly above the ground to be visible
+                    -GROUND_RADIUS * Math.cos(azRise)
+                );
+            } else {
+                // Hide marker during Polar Night or Midnight Sun
+                sunriseMarker.visible = false;
+            }
+
+            // Dynamic Day/Night Sky Color Transition
+            const nightColor = new THREE.Color('#020617');
+            const dayColor = new THREE.Color('#38bdf8');
+            
+            if (newLocalPos.y > -5) {
+                // Sun is above or just below the horizon
+                const sunRatio = Math.max(0, Math.min(1, newLocalPos.y / 15)); // fully day when sun is > 15 units high
+                localScene.background = nightColor.clone().lerp(dayColor, sunRatio);
+                localSunLight.intensity = 1.5 * sunRatio;
+            } else {
+                // Night
+                localScene.background = nightColor;
+                localSunLight.intensity = 0;
+            }
+            localSunLight.position.copy(newLocalPos);
+
+            localControls.update();
+            updateCompassLabels2D();
+            localRenderer.render(localScene, localCamera);
+
+            // 4. Update UI
+            const decFormatted = Math.abs(declinationDeg).toFixed(1);
+            const dir = declinationDeg >= 0 ? 'N' : 'S';
+            document.getElementById('declination-display').innerText = `${decFormatted}° ${dir}`;
+
+            let seasonName = "Equinox";
+            if (declinationDeg > 15) seasonName = "Summer (North) / Winter (South)";
+            else if (declinationDeg < -15) seasonName = "Winter (North) / Summer (South)";
+            document.getElementById('season-display').innerText = seasonName;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Zodiac Belt & The Ecliptic</title>
+    <style>
+        :root {
+            --bg-color: #050510;
+            --text-color: #e0e0ff;
+            --accent-color: #ffd700;
+            --belt-color: #a855f7;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-color);
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        header {
+            padding: 20px 30px;
+            background: linear-gradient(to bottom, rgba(5,5,16,0.9) 0%, rgba(5,5,16,0) 100%);
+            pointer-events: auto;
+        }
+
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            color: #fff;
+        }
+
+        h1 span {
+            color: var(--belt-color);
+            font-weight: 600;
+        }
+
+        .subtitle {
+            margin: 0;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 350px;
+            background: rgba(15, 15, 30, 0.75);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            pointer-events: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .info-panel h2 {
+            margin-top: 0;
+            font-size: 18px;
+            color: var(--accent-color);
+            border-bottom: 1px solid rgba(255,215,0,0.3);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .info-panel p {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            pointer-events: auto;
+        }
+
+        button {
+            background: rgba(255, 215, 0, 0.1);
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: var(--accent-color);
+            color: var(--bg-color);
+        }
+
+        /* 3D Label Container */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .zodiac-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-shadow: 0 0 5px #000, 0 0 10px var(--belt-color);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            font-weight: 600;
+        }
+
+        .angle-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            color: var(--accent-color);
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 5px #000;
+        }
+
+        .equinox-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-shadow: 0 0 5px #000, 0 0 10px #00ffff;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            font-weight: 700;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .info-panel {
+                width: calc(100% - 60px);
+                bottom: 80px;
+            }
+            .controls {
+                bottom: 20px;
+                right: auto;
+                left: 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="labels-container">
+        <!-- Labels will be injected here by JS -->
+    </div>
+
+    <div id="ui-layer">
+        <header>
+            <h1>The <span>Zodiac</span> Belt & Solar System</h1>
+            <p class="subtitle">Heliocentric Celestial Sphere</p>
+        </header>
+
+        <div class="info-panel">
+            <h2>Coordinate Systems & The Belt</h2>
+            <p><strong>The Ecliptic (Yellow):</strong> The plane of Earth's orbit and the apparent path of the Sun.</p>
+            <p><strong>Celestial Equator (Cyan):</strong> Earth's equator projected into space, tilted at <strong>23.5°</strong> relative to the Ecliptic.</p>
+            <p><strong>The Zodiac Belt (Purple):</strong> Extends 9° North and South of the <em>Ecliptic</em> (not the equator) to safely encapsulate the slightly inclined orbits of other planets.</p>
+        </div>
+
+        <div class="controls">
+            <button id="reset-btn">Reset View</button>
+        </div>
+    </div>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        let scene, camera, renderer, controls;
+        const labels = [];
+        const R = 100; // Radius of the celestial sphere
+
+        const zodiacSigns = [
+            "Aries", "Taurus", "Gemini", "Cancer", 
+            "Leo", "Virgo", "Libra", "Scorpio", 
+            "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+        ];
+
+        // Store 3D coordinates for HTML labels
+        const labelPositions = [];
+        let angleLabelObj = null;
+
+        // Variables for orbital animation
+        let earthPivot, earthMesh;
+        const planets = [];
+        let time = 0;
+
+        function init() {
+            // 1. Setup Scene, Camera, Renderer
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050510, 0.0015);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(120, 80, 150);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // 2. Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 20;
+            controls.maxDistance = 500;
+
+            // 3. Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambientLight);
+            
+            // Sunlight from the center
+            const sunLight = new THREE.PointLight(0xffffff, 1.5, 300);
+            scene.add(sunLight);
+
+            // 4. Background Stars
+            createStars();
+
+            // 5. Sun and Earth (Heliocentric with axial tilt)
+            createSunAndEarth();
+
+            // 6. Other Planets (showing their inclinations)
+            createPlanets();
+
+            // 7. Ecliptic Plane (Earth's orbital plane extended to the celestial sphere)
+            createEcliptic();
+
+            // 8. Equatorial Plane (Tilted 23.5 degrees)
+            createEquatorialPlane();
+
+            // 9. Zodiac Belt (9 degrees north and south)
+            createZodiacBelt();
+
+            // 10. The 9-Degree Measurement Visualization
+            createAngleVisualization();
+
+            // 11. Zodiac HTML Labels
+            createZodiacLabels();
+
+            // Events
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                // Animate camera back to start
+                const startPos = new THREE.Vector3(120, 80, 150);
+                const currentPos = camera.position.clone();
+                let alpha = 0;
+                
+                function animateReset() {
+                    alpha += 0.02;
+                    if (alpha > 1) alpha = 1;
+                    camera.position.lerpVectors(currentPos, startPos, alpha);
+                    controls.target.set(0,0,0);
+                    controls.update();
+                    if (alpha < 1) requestAnimationFrame(animateReset);
+                }
+                animateReset();
+            });
+
+            // Start Loop
+            animate();
+        }
+
+        function createStars() {
+            const starGeo = new THREE.BufferGeometry();
+            const starCount = 2000;
+            const starPos = new Float32Array(starCount * 3);
+            const starColors = new Float32Array(starCount * 3);
+
+            for (let i = 0; i < starCount * 3; i+=3) {
+                // Distribute points on a large sphere
+                const r = 400 + Math.random() * 200;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                starPos[i] = r * Math.sin(phi) * Math.cos(theta);
+                starPos[i+1] = r * Math.sin(phi) * Math.sin(theta);
+                starPos[i+2] = r * Math.cos(phi);
+
+                // Slight color variations
+                const shade = 0.5 + Math.random() * 0.5;
+                starColors[i] = shade;
+                starColors[i+1] = shade;
+                starColors[i+2] = shade + (Math.random()*0.2); // slight blue tint
+            }
+
+            starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+            starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+
+            const starMat = new THREE.PointsMaterial({
+                size: 1.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const stars = new THREE.Points(starGeo, starMat);
+            scene.add(stars);
+        }
+
+        function createSunAndEarth() {
+            // The Sun at the center
+            const sunGeo = new THREE.SphereGeometry(8, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+            const sun = new THREE.Mesh(sunGeo, sunMat);
+            
+            // Sun glow
+            const glowGeo = new THREE.SphereGeometry(9, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3 });
+            const sunGlow = new THREE.Mesh(glowGeo, glowMat);
+            sun.add(sunGlow);
+            scene.add(sun);
+
+            // Earth's Orbit Path (The Ecliptic Path)
+            const earthOrbitRadius = 40;
+            const orbitGeo = new THREE.RingGeometry(earthOrbitRadius - 0.2, earthOrbitRadius + 0.2, 64);
+            const orbitMat = new THREE.MeshBasicMaterial({ color: 0x4488ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+            const orbit = new THREE.Mesh(orbitGeo, orbitMat);
+            orbit.rotation.x = Math.PI / 2;
+            scene.add(orbit);
+
+            // Earth System (Pivot for orbit + axial tilt)
+            earthPivot = new THREE.Group();
+            
+            // Earth Mesh (Sphere)
+            const earthGeo = new THREE.SphereGeometry(3, 32, 32);
+            const earthMat = new THREE.MeshPhongMaterial({ color: 0x2266cc, emissive: 0x051530 });
+            earthMesh = new THREE.Mesh(earthGeo, earthMat);
+            
+            // Apply 23.5 degree axial tilt
+            const axialTilt = THREE.MathUtils.degToRad(23.5);
+            // Tilt on X axis to perfectly match the Celestial Equator
+            earthMesh.rotation.x = axialTilt; 
+            
+            // Axis Line (to visualize the tilt running through poles)
+            const axisGeo = new THREE.CylinderGeometry(0.1, 0.1, 10, 8);
+            const axisMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const axisLine = new THREE.Mesh(axisGeo, axisMat);
+            axisLine.rotation.x = axialTilt;
+            
+            earthPivot.add(earthMesh);
+            earthPivot.add(axisLine);
+            scene.add(earthPivot);
+        }
+
+        function createPlanets() {
+            // Function to add a planet with a specific orbital inclination
+            const addPlanet = (radius, size, color, inclinationDeg, speed) => {
+                // Orbit Path Group
+                const orbitGroup = new THREE.Group();
+                orbitGroup.rotation.x = THREE.MathUtils.degToRad(inclinationDeg); // Tilt the orbit plane relative to ecliptic
+                
+                const pathGeo = new THREE.RingGeometry(radius - 0.1, radius + 0.1, 64);
+                const pathMat = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
+                const path = new THREE.Mesh(pathGeo, pathMat);
+                path.rotation.x = Math.PI / 2;
+                orbitGroup.add(path);
+                scene.add(orbitGroup);
+
+                // Planet Mesh
+                const pGeo = new THREE.SphereGeometry(size, 16, 16);
+                const pMat = new THREE.MeshPhongMaterial({ color: color });
+                const pMesh = new THREE.Mesh(pGeo, pMat);
+                
+                scene.add(pMesh);
+                
+                planets.push({
+                    mesh: pMesh,
+                    distance: radius,
+                    speed: speed,
+                    inclination: THREE.MathUtils.degToRad(inclinationDeg)
+                });
+            };
+
+            // Mercury (Highly inclined orbit ~7 degrees)
+            addPlanet(20, 1.5, 0xaaaaaa, 7, 2.5);
+            
+            // Venus (Inclined ~3.4 degrees)
+            addPlanet(30, 2.5, 0xffcc88, 3.4, 1.5);
+            
+            // Mars (Inclined ~1.8 degrees)
+            addPlanet(52, 2, 0xff5533, 1.8, 0.8);
+        }
+
+        function createEcliptic() {
+            // Ecliptic path (The yellow ring)
+            const eclipticGeo = new THREE.TorusGeometry(R, 0.4, 16, 100);
+            const eclipticMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+            const ecliptic = new THREE.Mesh(eclipticGeo, eclipticMat);
+            ecliptic.rotation.x = Math.PI / 2; // Lay flat on XZ plane
+            scene.add(ecliptic);
+
+            // Faint grid for the ecliptic plane
+            const gridHelper = new THREE.GridHelper(R * 2, 20, 0x444444, 0x222222);
+            gridHelper.material.transparent = true;
+            gridHelper.material.opacity = 0.2;
+            scene.add(gridHelper);
+        }
+
+        function createEquatorialPlane() {
+            const eqGroup = new THREE.Group();
+            const axialTilt = THREE.MathUtils.degToRad(23.5);
+            
+            // Tilt the equatorial plane around the X axis
+            // This aligns the plane's intersection with the Ecliptic perfectly along the X axis
+            eqGroup.rotation.x = axialTilt; 
+
+            // The ring representing the Celestial Equator
+            const eqGeo = new THREE.TorusGeometry(R, 0.4, 16, 100);
+            const eqMat = new THREE.MeshBasicMaterial({ color: 0x00ffff }); // Cyan
+            const equator = new THREE.Mesh(eqGeo, eqMat);
+            equator.rotation.x = Math.PI / 2; // Lay flat relative to its tilted group
+            eqGroup.add(equator);
+
+            // Faint grid for the equatorial plane
+            const gridHelper = new THREE.GridHelper(R * 2, 20, 0x00ffff, 0x004455);
+            gridHelper.material.transparent = true;
+            gridHelper.material.opacity = 0.15;
+            eqGroup.add(gridHelper);
+
+            scene.add(eqGroup);
+
+            // Line of Equinoxes (Intersection of Ecliptic and Equator along X axis)
+            const equinoxGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-R, 0, 0),
+                new THREE.Vector3(R, 0, 0)
+            ]);
+            const equinoxMat = new THREE.LineDashedMaterial({ 
+                color: 0xffffff, 
+                linewidth: 2, 
+                dashSize: 4, 
+                gapSize: 2 
+            });
+            const equinoxLine = new THREE.Line(equinoxGeo, equinoxMat);
+            equinoxLine.computeLineDistances();
+            scene.add(equinoxLine);
+
+            // Add labels for Equinoxes
+            addLabelToScene('Vernal Equinox', new THREE.Vector3(R + 5, 8, 0), 'equinox-label');
+            addLabelToScene('Autumnal Equinox', new THREE.Vector3(-R - 5, 8, 0), 'equinox-label');
+        }
+
+        function createZodiacBelt() {
+            // The belt extends 9 degrees north and 9 degrees south of the ecliptic.
+            // In Three.js SphereGeometry, phi is measured from the positive Y axis down.
+            // Equator is at Math.PI / 2 (90 degrees).
+            // 9 degrees in radians:
+            const deg9 = THREE.MathUtils.degToRad(9);
+            
+            const phiStart = (Math.PI / 2) - deg9;
+            const phiLength = deg9 * 2; // Total width is 18 degrees
+
+            const beltGeo = new THREE.SphereGeometry(R, 64, 16, 0, Math.PI * 2, phiStart, phiLength);
+            
+            const beltMat = new THREE.MeshPhysicalMaterial({
+                color: 0x9333ea, // Purple
+                transparent: true,
+                opacity: 0.25,
+                side: THREE.DoubleSide,
+                roughness: 0.2,
+                transmission: 0.5,
+                thickness: 1.0
+            });
+
+            const belt = new THREE.Mesh(beltGeo, beltMat);
+            scene.add(belt);
+
+            // Add top and bottom border lines to the belt
+            const edgeGeo = new THREE.TorusGeometry(R * Math.cos(deg9), 0.2, 16, 100);
+            const edgeMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8 });
+            
+            const topEdge = new THREE.Mesh(edgeGeo, edgeMat);
+            topEdge.rotation.x = Math.PI / 2;
+            topEdge.position.y = R * Math.sin(deg9);
+            scene.add(topEdge);
+
+            const bottomEdge = new THREE.Mesh(edgeGeo, edgeMat);
+            bottomEdge.rotation.x = Math.PI / 2;
+            bottomEdge.position.y = -R * Math.sin(deg9);
+            scene.add(bottomEdge);
+        }
+
+        function createAngleVisualization() {
+            const vizGroup = new THREE.Group();
+            // Rotate the entire visualization group so it faces an easily viewable angle on start
+            vizGroup.rotation.y = Math.PI / 4; 
+
+            const yellowMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+            const deg9 = THREE.MathUtils.degToRad(9);
+
+            // 1. Line from center to Ecliptic
+            const lineGeo1 = new THREE.CylinderGeometry(0.3, 0.3, R, 16);
+            // Translate cylinder so it starts at origin
+            lineGeo1.translate(0, R/2, 0); 
+            const line1 = new THREE.Mesh(lineGeo1, yellowMat);
+            // Rotate to point along X axis (on ecliptic)
+            line1.rotation.z = -Math.PI / 2;
+            vizGroup.add(line1);
+
+            // 2. Line from center to Top Edge of Zodiac Belt (+9 degrees)
+            const lineGeo2 = new THREE.CylinderGeometry(0.3, 0.3, R, 16);
+            lineGeo2.translate(0, R/2, 0);
+            const line2 = new THREE.Mesh(lineGeo2, yellowMat);
+            // Rotate 90 deg minus 9 deg to point 9 deg above X axis
+            line2.rotation.z = -(Math.PI / 2) + deg9;
+            vizGroup.add(line2);
+
+            // 3. Draw an Arc indicating the angle
+            const arcRadius = 40;
+            const arcCurve = new THREE.EllipseCurve(
+                0, 0,            // ax, aY
+                arcRadius, arcRadius, // xRadius, yRadius
+                0, deg9,         // aStartAngle, aEndAngle
+                false,           // aClockwise
+                0                // aRotation
+            );
+            const arcPoints = arcCurve.getPoints(20);
+            const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+            const arcMat = new THREE.LineBasicMaterial({ color: 0xffd700, linewidth: 2 });
+            const arcLine = new THREE.Line(arcGeo, arcMat);
+            // The EllipseCurve is on XY plane. It perfectly matches our geometry.
+            vizGroup.add(arcLine);
+
+            // Highlight Sector (translucent pie slice)
+            const shape = new THREE.Shape();
+            shape.moveTo(0,0);
+            shape.lineTo(arcRadius, 0);
+            shape.absarc(0, 0, arcRadius, 0, deg9, false);
+            shape.lineTo(0,0);
+            const shapeGeo = new THREE.ShapeGeometry(shape);
+            const shapeMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+            const sector = new THREE.Mesh(shapeGeo, shapeMat);
+            vizGroup.add(sector);
+
+            // Setup HTML Label for "9°"
+            // We'll calculate a point in the middle of the arc to pin the label to
+            const midAngle = deg9 / 2;
+            const labelRadius = arcRadius + 8;
+            angleLabelObj = {
+                pos: new THREE.Vector3(
+                    labelRadius * Math.cos(midAngle),
+                    labelRadius * Math.sin(midAngle),
+                    0
+                ),
+                element: document.createElement('div')
+            };
+            
+            angleLabelObj.element.className = 'angle-label';
+            angleLabelObj.element.innerHTML = '9&deg;';
+            document.getElementById('labels-container').appendChild(angleLabelObj.element);
+
+            // Convert local position to world position based on group rotation
+            angleLabelObj.pos.applyEuler(vizGroup.rotation);
+
+            scene.add(vizGroup);
+        }
+
+        function addLabelToScene(name, pos, className) {
+            const el = document.createElement('div');
+            el.className = className;
+            el.textContent = name;
+            el.id = `label-${labelPositions.length}`;
+            document.getElementById('labels-container').appendChild(el);
+            labelPositions.push({ name: name, pos: pos });
+        }
+
+        function createZodiacLabels() {
+            const labelRadius = R + 12; // Place slightly outside the belt
+
+            zodiacSigns.forEach((sign, index) => {
+                // 360 degrees / 12 signs = 30 degrees per sign
+                const angle = index * (Math.PI / 6); 
+                
+                // Position on the XZ plane (around the Y axis)
+                const x = labelRadius * Math.cos(angle);
+                const z = labelRadius * Math.sin(angle);
+                const pos = new THREE.Vector3(x, 0, z);
+                
+                addLabelToScene(sign, pos, 'zodiac-label');
+            });
+        }
+
+        function updateLabels() {
+            const tempV = new THREE.Vector3();
+
+            // Update Zodiac Signs
+            labelPositions.forEach((data, index) => {
+                const el = document.getElementById(`label-${index}`);
+                
+                // Copy position and project to screen
+                tempV.copy(data.pos);
+                tempV.project(camera);
+
+                // Check if behind camera
+                if (tempV.z > 1) {
+                    el.style.opacity = 0;
+                    return;
+                }
+
+                // Map to screen coordinates
+                const x = (tempV.x * .5 + .5) * window.innerWidth;
+                const y = (tempV.y * -.5 + .5) * window.innerHeight;
+
+                el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+                
+                // Fade out labels that are on the far side of the sphere
+                // Distance from camera to center
+                const distToCenter = camera.position.length();
+                // Distance from camera to label
+                const distToLabel = camera.position.distanceTo(data.pos);
+                
+                if (distToLabel > distToCenter + (R * 0.2)) {
+                    el.style.opacity = 0.2; // Dim if on back
+                } else {
+                    el.style.opacity = 1;   // Bright if on front
+                }
+            });
+
+            // Update 9 Degree Label
+            if (angleLabelObj) {
+                tempV.copy(angleLabelObj.pos);
+                tempV.project(camera);
+                if (tempV.z < 1) {
+                    const x = (tempV.x * .5 + .5) * window.innerWidth;
+                    const y = (tempV.y * -.5 + .5) * window.innerHeight;
+                    angleLabelObj.element.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+                    angleLabelObj.element.style.display = 'block';
+                } else {
+                    angleLabelObj.element.style.display = 'none';
+                }
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.005;
+
+            // Earth Orbit (Exactly on the Ecliptic plane, Y=0)
+            const earthDist = 40;
+            const earthSpeed = 1.0;
+            if (earthPivot) {
+                earthPivot.position.set(
+                    Math.cos(time * earthSpeed) * earthDist,
+                    0,
+                    Math.sin(time * earthSpeed) * earthDist
+                );
+                // Earth daily rotation on its own tilted axis
+                if (earthMesh) {
+                    earthMesh.rotation.y += 0.05;
+                }
+            }
+
+            // Other Celestial Bodies (Planets) Orbits
+            planets.forEach(p => {
+                // Calculate position considering orbital inclination
+                // First calculate position on a flat XZ plane
+                const x = Math.cos(time * p.speed) * p.distance;
+                const z = Math.sin(time * p.speed) * p.distance;
+                
+                // Then apply rotation around X axis to simulate orbital inclination
+                const y = -z * Math.sin(p.inclination);
+                const zInclined = z * Math.cos(p.inclination);
+                
+                p.mesh.position.set(x, y, zInclined);
+            });
+            
+            controls.update();
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        // Initialize when DOM is fully loaded
+        window.addEventListener('load', init);
+
+    </script>
+</body>
+</html>

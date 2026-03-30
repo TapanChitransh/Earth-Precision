@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Zodiac Ascendant Simulator</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for camera interaction -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; padding: 2rem; box-sizing: border-box; }
+        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: auto; }
+        
+        /* Custom range slider styling */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #38bdf8; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(56, 189, 248, 0.8); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        
+        <!-- Toggle UI Button -->
+        <button id="btn-toggle-ui" class="absolute bottom-6 right-6 z-50 w-12 h-12 rounded-full glass-panel flex items-center justify-center text-xl hover:bg-gray-800/80 transition-all pointer-events-auto shadow-2xl border-gray-600 border" title="Hide UI">
+            🔭
+        </button>
+
+        <!-- Header & Current Ascendant Display -->
+        <div id="ui-top" class="flex justify-between items-start transition-opacity duration-500">
+            <div class="glass-panel p-6 rounded-2xl shadow-2xl max-w-sm w-full border-t-4 transition-all" id="ascendant-card" style="border-top-color: #38bdf8;">
+                <div class="flex justify-between items-center mb-1">
+                    <h1 class="text-xs uppercase tracking-widest text-gray-400 font-bold">Eastern Horizon</h1>
+                    <button id="btn-min-asc" class="text-gray-400 hover:text-white transition-colors focus:outline-none" title="Minimize Panel">▼</button>
+                </div>
+                <div id="asc-content">
+                    <div class="flex items-center gap-4 mt-2">
+                        <div>
+                            <div class="text-3xl font-bold transition-colors" id="sign-name">Aries</div>
+                            <div class="text-lg text-gray-300 font-mono" id="sign-degree">0° 0'</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-xs text-gray-400 border-t border-gray-700 pt-3">
+                        Absolute Zodiac Longitude: <span id="abs-degree" class="text-white">0.00°</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Context Info -->
+            <div class="glass-panel p-4 rounded-xl text-right hidden md:block">
+                <div class="flex justify-end items-center mb-1 gap-3">
+                    <h2 class="font-bold text-white">Interactive Celestial Sphere</h2>
+                    <button id="btn-min-context" class="text-gray-400 hover:text-white transition-colors focus:outline-none text-xs" title="Minimize Panel">▼</button>
+                </div>
+                <p id="context-content" class="text-xs text-gray-300 max-w-xs mt-1">Observe how Earth's rotation brings different degrees of the Zodiac to the Eastern Horizon.</p>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div id="ui-bottom" class="glass-panel p-6 rounded-2xl w-full max-w-xl mx-auto shadow-2xl flex flex-col transition-opacity duration-500">
+            
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xs uppercase tracking-widest text-gray-400 font-bold">Simulation Controls</h2>
+                <button id="btn-min-controls" class="text-gray-400 hover:text-white transition-colors focus:outline-none" title="Minimize Panel">▼</button>
+            </div>
+
+            <div id="controls-content" class="flex flex-col gap-6">
+                <!-- View Toggle -->
+                <div class="flex justify-between items-center bg-gray-900/50 p-1.5 rounded-lg border border-gray-700/50 mb-2 mt-[-10px]">
+                    <button id="btn-view-earth" class="flex-1 py-1.5 text-xs font-bold rounded-md bg-emerald-600 text-white shadow transition-all">Earth View</button>
+                    <button id="btn-view-space" class="flex-1 py-1.5 text-xs font-bold rounded-md text-gray-400 hover:text-white transition-all">Space View</button>
+                </div>
+
+                <!-- Time Control -->
+                <div>
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-sm font-semibold text-gray-300">Local Sidereal Time</label>
+                        <span id="time-display" class="font-mono text-sky-400">12:00</span>
+                    </div>
+                    <div class="flex gap-4 items-center">
+                        <button id="btn-play" class="w-10 h-10 rounded-full bg-sky-500/20 hover:bg-sky-500/40 border border-sky-500/50 flex items-center justify-center transition-colors text-sky-400 focus:outline-none">
+                            ⏸
+                        </button>
+                        <input type="range" id="time-slider" min="0" max="24" step="0.01" value="12" class="flex-grow">
+                    </div>
+                </div>
+
+                <!-- Speed Control -->
+                <div>
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-sm font-semibold text-gray-300">Animation Speed</label>
+                        <span id="speed-display" class="font-mono text-purple-400">1x</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="0.000" max="0.05" step="0.001" value="0.005">
+                </div>
+
+                <!-- Latitude Control -->
+                <div>
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-sm font-semibold text-gray-300">Observer Latitude</label>
+                        <span id="lat-display" class="font-mono text-emerald-400">25.4° N</span>
+                    </div>
+                    <input type="range" id="lat-slider" min="-89" max="89" step="0.1" value="25.4">
+                    <div class="flex justify-between text-[10px] text-gray-500 mt-1 uppercase tracking-wider">
+                        <span>South Pole</span>
+                        <span>Equator</span>
+                        <span>North Pole</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Zodiac Data
+        const ZODIAC_SIGNS = [
+            { name: "Aries", symbol: "♈", color: 0xff4444 },       // Fire
+            { name: "Taurus", symbol: "♉", color: 0x44ff44 },      // Earth
+            { name: "Gemini", symbol: "♊", color: 0xffff44 },      // Air
+            { name: "Cancer", symbol: "♋", color: 0x4444ff },      // Water
+            { name: "Leo", symbol: "♌", color: 0xff8844 },         // Fire
+            { name: "Virgo", symbol: "♍", color: 0x88ff44 },       // Earth
+            { name: "Libra", symbol: "♎", color: 0xff44ff },       // Air
+            { name: "Scorpio", symbol: "♏", color: 0x0088ff },      // Water
+            { name: "Sagittarius", symbol: "♐", color: 0xffaa00 }, // Fire
+            { name: "Capricorn", symbol: "♑", color: 0x442200 },   // Earth
+            { name: "Aquarius", symbol: "♒", color: 0x00ffff },     // Air
+            { name: "Pisces", symbol: "♓", color: 0x0000ff }        // Water
+        ];
+
+        // Core 3D Variables
+        let scene, camera, renderer, controls;
+        let localGroup, equatorialGroup, eclipticGroup;
+        let ascendantMarker, eastLine;
+        
+        // View Transition State
+        let isTransitioning = false;
+        let transitionProgress = 0;
+        let startCamPos = new THREE.Vector3();
+        let startCtrlPos = new THREE.Vector3();
+        let targetCamPos = new THREE.Vector3();
+        let targetCtrlPos = new THREE.Vector3();
+
+        // State
+        let state = {
+            time: 12, // 0 to 24 hours
+            latitude: 25.4, // Degrees (Default ~Prayagraj, India)
+            isPlaying: true,
+            playSpeed: 0.005
+        };
+
+        const ECLIPTIC_RADIUS = 100;
+        const OBLIQUITY = 23.44 * Math.PI / 180; // Tilt of ecliptic
+
+        // DOM Elements
+        const elTimeSlider = document.getElementById('time-slider');
+        const elTimeDisplay = document.getElementById('time-display');
+        const elSpeedSlider = document.getElementById('speed-slider');
+        const elSpeedDisplay = document.getElementById('speed-display');
+        const elLatSlider = document.getElementById('lat-slider');
+        const elLatDisplay = document.getElementById('lat-display');
+        const elBtnPlay = document.getElementById('btn-play');
+        const elSignName = document.getElementById('sign-name');
+        const elSignDegree = document.getElementById('sign-degree');
+        const elAbsDegree = document.getElementById('abs-degree');
+        const elAscCard = document.getElementById('ascendant-card');
+
+        const elUiTop = document.getElementById('ui-top');
+        const elUiBottom = document.getElementById('ui-bottom');
+        const elBtnToggleUi = document.getElementById('btn-toggle-ui');
+        let uiVisible = true;
+
+        init();
+        animate();
+
+        function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.0015);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Default to Earth View (First Person looking East)
+            camera.position.set(-2, 1.5, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enablePan = false; // Disable right-click pan to keep camera stable
+            // Target very close to camera to simulate looking around from a fixed point
+            controls.target.set(-1.9, 1.5, 0); 
+            controls.maxDistance = 500;
+            controls.minDistance = 0.05;
+
+            // 2. Build the Cosmos Hierarchy
+            // The localGroup represents the observer's local horizon. 
+            // Zenith is +Y, North is -Z, East is +X, South is +Z.
+            localGroup = new THREE.Group();
+            scene.add(localGroup);
+
+            // The equatorialGroup represents the rotating celestial sphere.
+            // Its +Y axis points to the North Celestial Pole.
+            equatorialGroup = new THREE.Group();
+            localGroup.add(equatorialGroup);
+
+            // The eclipticGroup holds the Zodiac ring, tilted by 23.5 deg.
+            eclipticGroup = new THREE.Group();
+            equatorialGroup.add(eclipticGroup);
+            eclipticGroup.rotation.x = OBLIQUITY;
+
+            // 3. Create Environment Geometry
+            createStars();
+            createHorizon();
+            createZodiacRing();
+
+            // Ascendant Marker (Glowing diamond on the horizon)
+            const markerGeo = new THREE.OctahedronGeometry(2.5, 0);
+            const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
+            ascendantMarker = new THREE.Mesh(markerGeo, markerMat);
+            scene.add(ascendantMarker); // Add to world scene to position absolutely
+
+            // Point Light for the marker
+            const markerLight = new THREE.PointLight(0xffffff, 2, 50);
+            ascendantMarker.add(markerLight);
+
+            // 4. Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            
+            elTimeSlider.addEventListener('input', (e) => {
+                state.time = parseFloat(e.target.value);
+                state.isPlaying = false;
+                elBtnPlay.innerText = "▶";
+                updateUI();
+            });
+
+            elLatSlider.addEventListener('input', (e) => {
+                state.latitude = parseFloat(e.target.value);
+                updateUI();
+            });
+
+            elBtnPlay.addEventListener('click', () => {
+                state.isPlaying = !state.isPlaying;
+                elBtnPlay.innerText = state.isPlaying ? "⏸" : "▶";
+            });
+
+            elSpeedSlider.addEventListener('input', (e) => {
+                state.playSpeed = parseFloat(e.target.value);
+                let multiplier = Math.round(state.playSpeed / 0.005 * 10) / 10;
+                elSpeedDisplay.innerText = `${multiplier}x`;
+            });
+
+            // View Toggle Listeners
+            const btnSpace = document.getElementById('btn-view-space');
+            const btnEarth = document.getElementById('btn-view-earth');
+
+            btnSpace.addEventListener('click', () => {
+                btnSpace.className = "flex-1 py-1.5 text-xs font-bold rounded-md bg-sky-600 text-white shadow transition-all";
+                btnEarth.className = "flex-1 py-1.5 text-xs font-bold rounded-md text-gray-400 hover:text-white transition-all";
+                
+                startCamPos.copy(camera.position);
+                startCtrlPos.copy(controls.target);
+                targetCamPos.set(-80, 40, 0);
+                targetCtrlPos.set(30, 0, 0);
+                isTransitioning = true;
+                transitionProgress = 0;
+            });
+
+            btnEarth.addEventListener('click', () => {
+                btnEarth.className = "flex-1 py-1.5 text-xs font-bold rounded-md bg-emerald-600 text-white shadow transition-all";
+                btnSpace.className = "flex-1 py-1.5 text-xs font-bold rounded-md text-gray-400 hover:text-white transition-all";
+                
+                startCamPos.copy(camera.position);
+                startCtrlPos.copy(controls.target);
+                targetCamPos.set(-2, 1.5, 0); // Earth surface eye-level
+                targetCtrlPos.set(-1.9, 1.5, 0); // Look around point
+                isTransitioning = true;
+                transitionProgress = 0;
+            });
+
+            // Panel Minimize Listeners
+            const togglePanel = (btnId, contentId) => {
+                const btn = document.getElementById(btnId);
+                const content = document.getElementById(contentId);
+                if (!btn || !content) return;
+                
+                let isMinimized = false;
+                btn.addEventListener('click', () => {
+                    isMinimized = !isMinimized;
+                    content.style.display = isMinimized ? 'none' : (contentId === 'controls-content' ? 'flex' : 'block');
+                    btn.innerText = isMinimized ? '▶' : '▼';
+                });
+            };
+
+            togglePanel('btn-min-asc', 'asc-content');
+            togglePanel('btn-min-controls', 'controls-content');
+            togglePanel('btn-min-context', 'context-content');
+
+            elBtnToggleUi.addEventListener('click', () => {
+                uiVisible = !uiVisible;
+                if (uiVisible) {
+                    elUiTop.style.opacity = '1';
+                    elUiTop.style.pointerEvents = 'auto';
+                    elUiBottom.style.opacity = '1';
+                    elUiBottom.style.pointerEvents = 'auto';
+                    elBtnToggleUi.innerHTML = '🔭';
+                    elBtnToggleUi.title = "Hide UI";
+                } else {
+                    elUiTop.style.opacity = '0';
+                    elUiTop.style.pointerEvents = 'none';
+                    elUiBottom.style.opacity = '0';
+                    elUiBottom.style.pointerEvents = 'none';
+                    elBtnToggleUi.innerHTML = '🎛️';
+                    elBtnToggleUi.title = "Show UI";
+                }
+            });
+
+            updateUI();
+        }
+
+        function createStars() {
+            const starsGeo = new THREE.BufferGeometry();
+            const starsCount = 2000;
+            const posArray = new Float32Array(starsCount * 3);
+            for(let i=0; i < starsCount * 3; i++) {
+                // Sphere distribution
+                const r = 400 + Math.random() * 200;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                posArray[i] = r * Math.sin(phi) * Math.cos(theta);
+                posArray[i+1] = r * Math.sin(phi) * Math.sin(theta);
+                posArray[i+2] = r * Math.cos(phi);
+            }
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const starsMat = new THREE.PointsMaterial({size: 1.5, color: 0xffffff, transparent: true, opacity: 0.8});
+            const starMesh = new THREE.Points(starsGeo, starsMat);
+            scene.add(starMesh);
+        }
+
+        function createHorizon() {
+            // Ground Grid
+            const gridHelper = new THREE.GridHelper(250, 25, 0x1e293b, 0x0f172a);
+            gridHelper.position.y = -0.1;
+            scene.add(gridHelper);
+
+            // Ground plane (translucent)
+            const groundGeo = new THREE.CylinderGeometry(150, 150, 0.2, 64);
+            const groundMat = new THREE.MeshBasicMaterial({ color: 0x020617, transparent: true, opacity: 0.7 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.position.y = -0.2;
+            scene.add(ground);
+
+            // Observer Platform
+            const obsGeo = new THREE.CylinderGeometry(2, 2, 0.5, 16);
+            const obsMat = new THREE.MeshBasicMaterial({ color: 0x64748b });
+            const observer = new THREE.Mesh(obsGeo, obsMat);
+            scene.add(observer);
+
+            // Compass Labels
+            createCompassLabel("N", new THREE.Vector3(0, 0, -120), 0x94a3b8);
+            createCompassLabel("S", new THREE.Vector3(0, 0, 120), 0x94a3b8);
+            createCompassLabel("W", new THREE.Vector3(-120, 0, 0), 0x94a3b8);
+            
+            // East Label & Glowing Line
+            createCompassLabel("E (Ascendant rises here)", new THREE.Vector3(120, 0, 0), 0x38bdf8);
+            
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0.1, 0),
+                new THREE.Vector3(150, 0.1, 0)
+            ]);
+            eastLine = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, transparent:true, opacity:0.5 }));
+            scene.add(eastLine);
+        }
+
+        function createCompassLabel(text, position, colorHex) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold 36px sans-serif';
+            ctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.position.copy(position);
+            sprite.position.y = 2; // slightly above ground
+            sprite.scale.set(60, 15, 1);
+            scene.add(sprite);
+        }
+
+        function createZodiacRing() {
+            // Create 12 segments for the ecliptic ring
+            const segments = 64;
+            
+            for(let i=0; i<12; i++) {
+                const startAngle = (i * 30) * Math.PI / 180;
+                const endAngle = ((i+1) * 30) * Math.PI / 180;
+                
+                // Create arc line
+                const curve = new THREE.EllipseCurve(
+                    0, 0, ECLIPTIC_RADIUS, ECLIPTIC_RADIUS,
+                    -endAngle, -startAngle, // Negative because Threejs arc is CCW, we want longitude to map correctly
+                    false, 0
+                );
+                
+                const points = curve.getPoints(segments);
+                // Map 2D curve points to 3D XZ plane (Y=0)
+                const points3D = points.map(p => new THREE.Vector3(p.x, 0, p.y));
+                
+                const geo = new THREE.BufferGeometry().setFromPoints(points3D);
+                const mat = new THREE.LineBasicMaterial({ color: ZODIAC_SIGNS[i].color, linewidth: 3 });
+                const line = new THREE.Line(geo, mat);
+                eclipticGroup.add(line);
+
+                // Create floating label for the sign at the middle of the segment (15 degrees in)
+                const midAngle = (i * 30 + 15) * Math.PI / 180;
+                createSignLabel(ZODIAC_SIGNS[i], midAngle);
+            }
+        }
+
+        function createSignLabel(signObj, angleRad) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            
+            // Background capsule
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+            ctx.beginPath();
+            ctx.roundRect(32, 32, 192, 64, 32);
+            ctx.fill();
+            ctx.strokeStyle = '#' + signObj.color.toString(16).padStart(6, '0');
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Text
+            ctx.font = 'bold 28px sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(signObj.name, 128, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(mat);
+            
+            // Position slightly outside the ring
+            const r = ECLIPTIC_RADIUS + 12;
+            // Negative angle here maps correctly to our 3D space configuration
+            sprite.position.set(r * Math.cos(-angleRad), 0, r * Math.sin(-angleRad));
+            sprite.scale.set(30, 15, 1);
+            
+            eclipticGroup.add(sprite);
+        }
+
+        function updateUI() {
+            // Format Time
+            let h = Math.floor(state.time);
+            let m = Math.floor((state.time - h) * 60);
+            elTimeDisplay.innerText = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} LST`;
+            elTimeSlider.value = state.time;
+
+            // Format Latitude
+            let dir = state.latitude >= 0 ? 'N' : 'S';
+            elLatDisplay.innerText = `${Math.abs(state.latitude).toFixed(1)}° ${dir}`;
+        }
+
+        // Returns world coordinate of a specific degree on the ecliptic
+        function getEclipticWorldPos(degree) {
+            // In our setup, 0 deg (Aries) is at +X, 90 deg (Cancer) is at -Z (before rotation)
+            // So we use -angle for Z to make longitude go counter-clockwise around +Y.
+            let rad = degree * Math.PI / 180;
+            let vec = new THREE.Vector3(ECLIPTIC_RADIUS * Math.cos(rad), 0, -ECLIPTIC_RADIUS * Math.sin(rad));
+            eclipticGroup.localToWorld(vec);
+            return vec;
+        }
+
+        // Calculates which degree of the ecliptic is currently rising in the East
+        function calculateAscendant() {
+            // We search the 360 degrees of the ecliptic to find where it crosses the local horizon (Y=0)
+            // specifically on the Eastern side (X > 0).
+            let prevY = getEclipticWorldPos(359).y;
+            
+            for(let d=0; d<360; d++) {
+                let v = getEclipticWorldPos(d);
+                
+                // Check if it crossed the horizon plane (Y=0)
+                if ((prevY <= 0 && v.y >= 0) || (prevY >= 0 && v.y <= 0)) {
+                    // Check if it's in the East (positive X)
+                    if (v.x > 0) {
+                        let dPrev = (d === 0) ? 359 : d - 1;
+                        let vPrev = getEclipticWorldPos(dPrev);
+                        
+                        // Linear interpolation for exact degree fraction
+                        let totalDiff = Math.abs(vPrev.y) + Math.abs(v.y);
+                        let fraction = (totalDiff === 0) ? 0 : Math.abs(vPrev.y) / totalDiff;
+                        
+                        return dPrev + fraction;
+                    }
+                }
+                prevY = v.y;
+            }
+            return null; // Can happen at extreme latitudes (circumpolar signs)
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if(state.isPlaying) {
+                state.time += state.playSpeed;
+                if(state.time >= 24) state.time = 0;
+                updateUI();
+            }
+
+            // 1. Rotate Celestial Sphere based on Time (1 hour = 15 degrees)
+            // Time moves forward -> sky rotates westward (negative Y rotation)
+            let timeAngle = (state.time / 24) * Math.PI * 2;
+            equatorialGroup.rotation.y = -timeAngle;
+
+            // 2. Tilt Local Horizon based on Latitude
+            // If Lat = 90 (N Pole), tilt = 0 (Equator is on horizon).
+            // If Lat = 0 (Equator), tilt = -90 (Equator goes through Zenith).
+            localGroup.rotation.x = (state.latitude - 90) * Math.PI / 180;
+            
+            // Ensure matrices are updated for exact calculations
+            localGroup.updateMatrixWorld(true);
+
+            // 3. Find and display the Ascendant
+            let ascDegree = calculateAscendant();
+            
+            if(ascDegree !== null) {
+                // Update 3D Marker
+                let ascPos = getEclipticWorldPos(ascDegree);
+                ascendantMarker.position.copy(ascPos);
+                ascendantMarker.visible = true;
+                
+                // Update eastline to point to marker
+                eastLine.geometry.setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(ascPos.x, 0, ascPos.z)
+                ]);
+
+                // Update HTML UI
+                let normalizedDeg = ascDegree % 360;
+                let signIndex = Math.floor(normalizedDeg / 30);
+                let signDeg = normalizedDeg % 30;
+                let signInfo = ZODIAC_SIGNS[signIndex];
+
+                elSignName.innerText = signInfo.name;
+                
+                // Update UI colors dynamically based on element
+                elSignName.style.color = '#' + signInfo.color.toString(16).padStart(6,'0');
+                elAscCard.style.borderTopColor = '#' + signInfo.color.toString(16).padStart(6,'0');
+
+                // Format degree to deg and min
+                let d = Math.floor(signDeg);
+                let m = Math.floor((signDeg - d) * 60);
+                elSignDegree.innerText = `${d}° ${m.toString().padStart(2, '0')}'`;
+                
+                elAbsDegree.innerText = `${normalizedDeg.toFixed(2)}°`;
+            } else {
+                ascendantMarker.visible = false;
+                elSignName.innerText = "Circumpolar";
+                elSignName.style.color = '#ffffff';
+                elSignDegree.innerText = "N/A";
+                elAbsDegree.innerText = "Ecliptic doesn't cross East";
+                elAscCard.style.borderTopColor = '#475569';
+            }
+
+            // Smooth Camera View Transitions
+            if (isTransitioning) {
+                transitionProgress += 0.015;
+                if (transitionProgress >= 1) {
+                    transitionProgress = 1;
+                    isTransitioning = false;
+                }
+                let t = transitionProgress;
+                // easeInOutQuad formula
+                let ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; 
+                
+                camera.position.lerpVectors(startCamPos, targetCamPos, ease);
+                controls.target.lerpVectors(startCtrlPos, targetCtrlPos, ease);
+            }
+
+            // Slowly rotate marker for flair
+            ascendantMarker.rotation.y += 0.05;
+            ascendantMarker.rotation.x += 0.02;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

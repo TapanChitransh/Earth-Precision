@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunar Nodes & 18.6-Year Precession</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050510; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; p-4 }
+        .interactive { pointer-events: auto; }
+        .glass-panel { background: rgba(15, 20, 35, 0.75); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; }
+        
+        /* Custom Range Slider */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="p-4 md:p-6">
+        
+        <!-- Header & Info -->
+        <div class="flex flex-col md:flex-row justify-between items-start gap-4">
+            
+            <!-- Info Panel -->
+            <div class="glass-panel p-5 max-w-md interactive shadow-2xl">
+                <div class="flex justify-between items-start gap-2 mb-2">
+                    <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">Lunar Nodes & Precession</h1>
+                    <button onclick="toggleBox('info-content', this)" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all flex-shrink-0" title="Minimize/Maximize">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                    </button>
+                </div>
+                
+                <div id="info-content" class="transition-opacity duration-300">
+                    <p class="text-sm text-gray-300 mb-3 leading-relaxed">
+                        The Moon's orbit is tilted about 5.1° relative to Earth's orbit (the Ecliptic). 
+                        The intersection points are the <b>Lunar Nodes</b>. 
+                    </p>
+                    <div class="space-y-2 text-xs text-gray-300 border-t border-gray-600 pt-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-green-400 shadow-[0_0_8px_#4ade80]"></span>
+                            <span><b>Ascending Node:</b> Moon crosses North</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-red-400 shadow-[0_0_8px_#f87171]"></span>
+                            <span><b>Descending Node:</b> Moon crosses South</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-4 h-1 bg-yellow-400 rounded"></span>
+                            <span><b>Line of Nodes:</b> Axis of intersection</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Panel -->
+            <div class="glass-panel p-5 min-w-[200px] interactive flex flex-col items-center">
+                <div class="flex justify-between items-center w-full mb-2">
+                    <div class="text-xs text-gray-400 uppercase tracking-widest">Time Elapsed</div>
+                    <button onclick="toggleBox('stats-content', this)" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all flex-shrink-0" title="Minimize/Maximize">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                    </button>
+                </div>
+                
+                <div id="stats-content" class="w-full flex flex-col items-center transition-opacity duration-300">
+                    <div class="text-3xl font-mono text-blue-300 font-bold tracking-tight">
+                        <span id="year-display">0.0</span> <span class="text-lg text-gray-400">YRS</span>
+                    </div>
+                    
+                    <div class="w-full mt-4 bg-gray-800 rounded-full h-2 relative overflow-hidden">
+                        <div id="cycle-progress" class="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full w-0 transition-all duration-100"></div>
+                    </div>
+                    <div class="text-[10px] text-gray-400 mt-1 flex justify-between w-full">
+                        <span>0</span>
+                        <span>18.6 Year Cycle</span>
+                    </div>
+
+                    <div id="eclipse-warning" class="mt-3 px-3 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 text-xs font-bold animate-pulse opacity-0 transition-opacity">
+                        ⚠️ ECLIPSE SEASON
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="glass-panel p-5 interactive md:max-w-xl mx-auto w-full mb-4">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-semibold text-gray-200">Simulation Controls</h3>
+                <button onclick="toggleBox('controls-content', this)" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all flex-shrink-0" title="Minimize/Maximize">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                </button>
+            </div>
+            
+            <div id="controls-content" class="flex flex-col gap-4 transition-opacity duration-300">
+                <!-- Speed Slider -->
+                <div>
+                    <div class="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Pause</span>
+                        <span>Speed of Time</span>
+                        <span>Fast</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="0" max="5" step="0.1" value="1">
+                </div>
+
+                <div class="flex justify-center gap-3">
+                    <button id="btn-top" class="px-4 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/50 rounded text-sm transition-colors">Top View</button>
+                    <button id="btn-side" class="px-4 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/50 rounded text-sm transition-colors">Side View</button>
+                </div>
+                
+                <p class="text-[11px] text-gray-400 text-center italic mt-2">
+                    Drag to rotate 3D view. Scroll to zoom. The sun pulls on the tilted orbit, causing it to wobble and complete one backward rotation every 18.6 years.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js and OrbitControls via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- UI TOGGLE LOGIC ---
+        function toggleBox(contentId, btn) {
+            const content = document.getElementById(contentId);
+            const isHidden = content.classList.toggle('hidden');
+            const svgClass = btn.children[0].className.baseVal || 'w-4 h-4';
+            
+            if (isHidden) {
+                // Show Plus icon
+                btn.innerHTML = `<svg class="${svgClass}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>`;
+            } else {
+                // Show Minus icon
+                btn.innerHTML = `<svg class="${svgClass}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>`;
+            }
+        }
+
+        // DOM Elements
+        const yearDisplay = document.getElementById('year-display');
+        const cycleProgress = document.getElementById('cycle-progress');
+        const speedSlider = document.getElementById('speed-slider');
+        const eclipseWarning = document.getElementById('eclipse-warning');
+
+        // --- 1. SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(25, 15, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 100;
+        controls.minDistance = 5;
+
+        // --- 2. LIGHTING ---
+        scene.add(new THREE.AmbientLight(0x222233));
+        
+        // Sun Light (rotates around Earth to show time passage)
+        const sunLight = new THREE.PointLight(0xfff5e6, 2, 200);
+        scene.add(sunLight);
+
+        // --- 3. AESTHETIC BACKGROUND ---
+        // Stars
+        const starGeo = new THREE.BufferGeometry();
+        const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1, transparent: true });
+        const starVertices = [];
+        for(let i=0; i<2000; i++) {
+            const x = (Math.random() - 0.5) * 200;
+            const y = (Math.random() - 0.5) * 200;
+            const z = (Math.random() - 0.5) * 200;
+            starVertices.push(x,y,z);
+        }
+        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        scene.add(new THREE.Points(starGeo, starMat));
+
+        // Ecliptic Grid (Reference Plane)
+        const gridHelper = new THREE.GridHelper(40, 40, 0x113355, 0x0a1525);
+        scene.add(gridHelper);
+
+        // Ecliptic Disk (Subtle)
+        const eclipticGeo = new THREE.CylinderGeometry(20, 20, 0.01, 64);
+        const eclipticMat = new THREE.MeshBasicMaterial({ color: 0x113355, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+        scene.add(new THREE.Mesh(eclipticGeo, eclipticMat));
+
+        // --- 4. CELESTIAL BODIES ---
+        
+        // EARTH
+        const earthGroup = new THREE.Group();
+        scene.add(earthGroup);
+
+        const earthGeo = new THREE.SphereGeometry(2, 32, 32);
+        const earthMat = new THREE.MeshStandardMaterial({ 
+            color: 0x2266cc, 
+            roughness: 0.6,
+            metalness: 0.1
+        });
+        const earth = new THREE.Mesh(earthGeo, earthMat);
+        earthGroup.add(earth);
+
+        // Earth Wireframe (Tech look)
+        const wireMat = new THREE.MeshBasicMaterial({ color: 0x55aaff, wireframe: true, transparent: true, opacity: 0.3 });
+        earthGroup.add(new THREE.Mesh(earthGeo, wireMat));
+
+        // SUN REPRESENTATION
+        const sunDistance = 35;
+        const sunGroup = new THREE.Group();
+        scene.add(sunGroup);
+        
+        const sunGeo = new THREE.SphereGeometry(1.5, 32, 32);
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xffddaa });
+        const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+        sunGroup.add(sunMesh);
+
+        // Sun path
+        const sunPathGeo = new THREE.RingGeometry(sunDistance - 0.05, sunDistance + 0.05, 128);
+        const sunPathMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+        const sunPath = new THREE.Mesh(sunPathGeo, sunPathMat);
+        sunPath.rotation.x = Math.PI / 2;
+        scene.add(sunPath);
+
+
+        // --- 5. LUNAR SYSTEM (The Core Simulation) ---
+        
+        const lunarDistance = 8;
+        // Exaggerated slightly for visualization (True is ~5.14 deg)
+        const orbitTiltDegrees = 8.0; 
+        const tiltAngle = THREE.MathUtils.degToRad(orbitTiltDegrees);
+
+        // Lunar System rotates around Y axis to simulate Precession
+        const lunarSystem = new THREE.Group();
+        scene.add(lunarSystem);
+
+        // Tilted Orbit rotates around X axis to simulate Orbital Tilt
+        const tiltedOrbit = new THREE.Group();
+        tiltedOrbit.rotation.x = tiltAngle; 
+        lunarSystem.add(tiltedOrbit);
+
+        // Lunar Path Ring
+        const moonPathGeo = new THREE.RingGeometry(lunarDistance - 0.08, lunarDistance + 0.08, 64);
+        const moonPathMat = new THREE.MeshBasicMaterial({ color: 0xaa66ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+        const moonPath = new THREE.Mesh(moonPathGeo, moonPathMat);
+        moonPath.rotation.x = Math.PI / 2; // Lie flat in the tilted coordinate system
+        tiltedOrbit.add(moonPath);
+
+        // Moon
+        const moonGeo = new THREE.SphereGeometry(0.5, 32, 32);
+        const moonMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 1.0 });
+        const moon = new THREE.Mesh(moonGeo, moonMat);
+        tiltedOrbit.add(moon);
+
+        // --- 6. THE NODES ---
+        
+        // Line of Nodes (Intersection of Tilted plane and Ecliptic = X axis)
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-lunarDistance * 1.2, 0, 0),
+            new THREE.Vector3(lunarDistance * 1.2, 0, 0)
+        ]);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xffdd00, transparent: true, opacity: 0.8 });
+        const nodeLine = new THREE.Line(lineGeo, lineMat);
+        lunarSystem.add(nodeLine);
+
+        // Ascending Node Marker (+X)
+        const ascGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const ascMat = new THREE.MeshBasicMaterial({ color: 0x4ade80 }); // Green
+        const ascNode = new THREE.Mesh(ascGeo, ascMat);
+        ascNode.position.set(lunarDistance, 0, 0);
+        lunarSystem.add(ascNode);
+        
+        // Ascending Glow
+        const ascGlow = new THREE.Mesh(ascGeo, new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.4 }));
+        ascGlow.scale.set(1.5, 1.5, 1.5);
+        ascNode.add(ascGlow);
+
+        // Descending Node Marker (-X)
+        const descGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const descMat = new THREE.MeshBasicMaterial({ color: 0xf87171 }); // Red
+        const descNode = new THREE.Mesh(descGeo, descMat);
+        descNode.position.set(-lunarDistance, 0, 0);
+        lunarSystem.add(descNode);
+
+        // Descending Glow
+        const descGlow = new THREE.Mesh(descGeo, new THREE.MeshBasicMaterial({ color: 0xf87171, transparent: true, opacity: 0.4 }));
+        descGlow.scale.set(1.5, 1.5, 1.5);
+        descNode.add(descGlow);
+
+
+        // --- 7. ANIMATION LOGIC ---
+        
+        let simulationTime = 0; // In "Earth Years"
+        
+        // Constants for orbital mechanics
+        const moonOrbitsPerYear = 13.368; 
+        const nodalPrecessionYears = 18.6; 
+        
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Time progression
+            const speed = parseFloat(speedSlider.value);
+            // speed=1 means 0.005 years per frame (~0.3 years per second at 60fps)
+            simulationTime += speed * 0.005; 
+
+            // 1. Sun Position (1 orbit per year)
+            const sunAngle = simulationTime * Math.PI * 2;
+            sunGroup.position.x = Math.cos(sunAngle) * sunDistance;
+            sunGroup.position.z = -Math.sin(sunAngle) * sunDistance;
+            sunLight.position.copy(sunGroup.position);
+
+            // 2. Earth Rotation (Fast, illustrative)
+            earthGroup.rotation.y += speed * 0.05;
+
+            // 3. Moon Position (13.368 orbits per year)
+            const moonAngle = simulationTime * moonOrbitsPerYear * Math.PI * 2;
+            moon.position.x = Math.cos(moonAngle) * lunarDistance;
+            moon.position.z = -Math.sin(moonAngle) * lunarDistance;
+            
+            // 4. Lunar Nodes Precession (1 backward rotation per 18.6 years)
+            // It goes clockwise (retrograde), so angle is negative.
+            const nodeAngle = -(simulationTime / nodalPrecessionYears) * Math.PI * 2;
+            lunarSystem.rotation.y = nodeAngle;
+
+            // 5. Update UI
+            yearDisplay.innerText = simulationTime.toFixed(1);
+            
+            const cycleFraction = (simulationTime % nodalPrecessionYears) / nodalPrecessionYears;
+            cycleProgress.style.width = `${cycleFraction * 100}%`;
+
+            // 6. Eclipse Season Detection
+            // When the Sun aligns with the Line of Nodes (within ~15 degrees)
+            // Normalize angles to 0-PI
+            let normSunAngle = sunAngle % Math.PI;
+            if(normSunAngle < 0) normSunAngle += Math.PI;
+            
+            let normNodeAngle = Math.abs(nodeAngle) % Math.PI;
+            if(nodeAngle > 0) normNodeAngle = Math.PI - normNodeAngle; // Handle direction
+            
+            const diff = Math.abs(normSunAngle - normNodeAngle);
+            const eclipseTolerance = 0.25; // ~14 degrees
+
+            if (diff < eclipseTolerance || Math.abs(diff - Math.PI) < eclipseTolerance) {
+                eclipseWarning.style.opacity = '1';
+            } else {
+                eclipseWarning.style.opacity = '0';
+            }
+
+            // Render
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- 8. UI INTERACTIONS ---
+
+        document.getElementById('btn-top').addEventListener('click', () => {
+            // Move camera to look top-down
+            camera.position.set(0, 35, 0);
+            camera.lookAt(0,0,0);
+            controls.target.set(0,0,0);
+        });
+
+        document.getElementById('btn-side').addEventListener('click', () => {
+            // Move camera to look from ecliptic plane
+            camera.position.set(30, 2, 30);
+            camera.lookAt(0,0,0);
+            controls.target.set(0,0,0);
+        });
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation loop after window is fully loaded
+        window.onload = function() {
+            animate();
+        };
+
+    </script>
+</body>
+</html>

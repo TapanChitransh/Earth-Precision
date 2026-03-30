@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunar Nodes & Orbital Precession</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; color: white; font-family: sans-serif; }
+        canvas { display: block; }
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            max-width: 380px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .control-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        input { width: 100%; background: #111; border: 1px solid #333; color: white; padding: 8px; border-radius: 6px; font-size: 0.9rem; }
+        .legend { font-size: 0.75rem; margin-top: 10px; color: #bbb; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        
+        .info-box {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(30, 58, 138, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #d1d5db;
+        }
+        .highlight { color: #facc15; font-weight: bold; }
+        .retro-highlight { color: #f87171; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="ui-panel">
+        <div class="flex justify-between items-center mb-1">
+            <h1 class="text-xl font-bold">Lunar Nodes</h1>
+            <button id="toggleBtn" class="bg-gray-800 hover:bg-gray-700 text-white rounded px-2 leading-none py-1 text-lg transition-colors" title="Minimize/Maximize">&minus;</button>
+        </div>
+        
+        <div id="panelContent">
+            <p class="text-xs text-gray-400 mb-4">Why the Nodes are ALWAYS Retrograde</p>
+            
+            <div class="control-group">
+                <label>Earth Orbital Speed</label>
+                <input type="range" id="earthSpeed" min="0" max="2" step="0.05" value="0.3">
+            </div>
+
+            <div class="control-group">
+                <label>Moon Orbital Speed (Prograde)</label>
+                <input type="range" id="moonSpeed" min="0" max="10" step="0.1" value="5">
+            </div>
+
+            <div class="control-group">
+                <label>Nodal Precession Speed (Retrograde)</label>
+                <input type="range" id="nodeSpeed" min="0" max="2" step="0.05" value="0.5">
+            </div>
+
+            <div class="control-group">
+                <label>Camera Focus (360° Target)</label>
+                <select id="cameraTarget">
+                    <option value="sun">The Sun (System View)</option>
+                    <option value="earth">The Earth (Nodes View)</option>
+                </select>
+            </div>
+
+            <div class="control-group flex gap-2 mb-2">
+                <button id="zoomInBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded py-1.5 text-sm transition-colors">Zoom In (+)</button>
+                <button id="zoomOutBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded py-1.5 text-sm transition-colors">Zoom Out (-)</button>
+            </div>
+
+            <div class="info-box">
+                <p class="mb-2"><b>What are Nodes?</b> They are the exact points where the Moon's tilted orbit intersects Earth's orbital plane (the Ecliptic).</p>
+                <p><b>Why always Retrograde?</b> The Sun's gravity pulls on the Moon's tilted orbit, trying to flatten it. The orbital plane responds by wobbling (<span class="highlight">Gyroscopic Precession</span>) in the exact opposite direction of the Moon's travel. Thus, the nodes <span class="retro-highlight">only move backward</span>.</p>
+            </div>
+
+            <div class="legend mt-4">
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-yellow-400 rounded-full"></span> Sun</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> Earth</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-gray-200 rounded-full"></span> Moon</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-green-500 rounded-full"></span> Ascending Node</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 bg-red-500 rounded-full"></span> Descending Node</div>
+                <div class="flex items-center gap-2"><span class="w-6 h-0.5 bg-yellow-500 opacity-50"></span> Local Ecliptic</div>
+                <div class="flex items-center gap-2 col-span-2"><span class="w-6 h-0.5 bg-cyan-400 opacity-50"></span> Lunar Orbital Plane</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, sun, earthSystem, earth, moon;
+        let eclipticGroup, lunarSystem, nodesGroup;
+        let clock = new THREE.Clock();
+        let controls;
+        let cameraTargetObj = 'sun';
+        
+        const EARTH_ORBIT_RADIUS = 50;
+        const LUNAR_ORBIT_RADIUS = 12;
+        // Exaggerated tilt for visual clarity (actual is ~5.1 degrees)
+        const ORBIT_TILT = 15 * (Math.PI / 180); 
+        
+        let earthAngle = 0;
+        let moonAngle = 0;
+        let nodeAngle = 0;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 60, 100);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0x404040, 1.5)); // Soft global light
+            const sunLight = new THREE.PointLight(0xffffff, 3, 300); // Light emanating from the Sun
+            sunLight.position.set(0, 0, 0);
+            scene.add(sunLight);
+
+            // 1. The Sun
+            sun = new THREE.Mesh(
+                new THREE.SphereGeometry(6, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffdd00 }) // Basic material so it glows regardless of light
+            );
+            scene.add(sun);
+
+            // Global Earth Orbit Path
+            const earthOrbitPath = new THREE.Mesh(
+                new THREE.RingGeometry(EARTH_ORBIT_RADIUS - 0.2, EARTH_ORBIT_RADIUS + 0.2, 128),
+                new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.DoubleSide, transparent: true, opacity: 0.3 })
+            );
+            earthOrbitPath.rotation.x = Math.PI / 2;
+            scene.add(earthOrbitPath);
+
+            // --- EARTH SYSTEM (Groups everything orbiting the Earth) ---
+            earthSystem = new THREE.Group();
+            scene.add(earthSystem);
+
+            // 2. Earth
+            earth = new THREE.Mesh(
+                new THREE.SphereGeometry(2, 32, 32), 
+                new THREE.MeshPhongMaterial({ color: 0x2244ff, emissive: 0x051122 })
+            );
+            earthSystem.add(earth);
+
+            // 3. Local Ecliptic Plane (Reference Plane relative to Earth)
+            eclipticGroup = new THREE.Group();
+            const eclipticRing = new THREE.Mesh(
+                new THREE.RingGeometry(LUNAR_ORBIT_RADIUS - 0.2, LUNAR_ORBIT_RADIUS + 0.2, 64),
+                new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, transparent: true, opacity: 0.3 })
+            );
+            eclipticRing.rotation.x = Math.PI / 2;
+            eclipticGroup.add(eclipticRing);
+            
+            // Grid for Ecliptic to make it visible as a plane
+            const gridHelper = new THREE.GridHelper(LUNAR_ORBIT_RADIUS * 2.5, 12, 0x444400, 0x222200);
+            eclipticGroup.add(gridHelper);
+            earthSystem.add(eclipticGroup);
+
+            // 4. Lunar System (Rotates on Y to simulate Nodal Precession)
+            lunarSystem = new THREE.Group();
+            earthSystem.add(lunarSystem);
+
+            // The actual tilted orbit ring
+            const lunarOrbitRing = new THREE.Mesh(
+                new THREE.RingGeometry(LUNAR_ORBIT_RADIUS - 0.2, LUNAR_ORBIT_RADIUS + 0.2, 64),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+            );
+            // Tilt the ring relative to the ecliptic
+            lunarOrbitRing.rotation.x = Math.PI / 2 + ORBIT_TILT; 
+            lunarSystem.add(lunarOrbitRing);
+
+            // Moon
+            moon = new THREE.Mesh(
+                new THREE.SphereGeometry(0.8, 24, 24),
+                new THREE.MeshPhongMaterial({ color: 0xdddddd })
+            );
+            // Add moon to lunar system so it inherits the tilt
+            lunarSystem.add(moon);
+
+            // 5. Nodes Visualizers
+            nodesGroup = new THREE.Group();
+            earthSystem.add(nodesGroup);
+
+            // Line connecting the nodes
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, dashSize: 1, gapSize: 1 });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-LUNAR_ORBIT_RADIUS * 1.2, 0, 0),
+                new THREE.Vector3(LUNAR_ORBIT_RADIUS * 1.2, 0, 0)
+            ]);
+            const nodeLine = new THREE.LineSegments(lineGeo, lineMat);
+            nodeLine.computeLineDistances(); // Needed for dashed lines
+            nodesGroup.add(nodeLine);
+
+            // Ascending Node (North Node / Rahu) - Where Moon goes UP through the ecliptic
+            const ascNode = new THREE.Mesh(
+                new THREE.SphereGeometry(0.9, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x22c55e })
+            );
+            ascNode.position.set(LUNAR_ORBIT_RADIUS, 0, 0);
+            nodesGroup.add(ascNode);
+
+            // Descending Node (South Node / Ketu) - Where Moon goes DOWN through the ecliptic
+            const descNode = new THREE.Mesh(
+                new THREE.SphereGeometry(0.9, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xef4444 })
+            );
+            descNode.position.set(-LUNAR_ORBIT_RADIUS, 0, 0);
+            nodesGroup.add(descNode);
+
+            // Stars
+            const starGeo = new THREE.BufferGeometry();
+            const starCoords = [];
+            for(let i=0; i<3000; i++) {
+                starCoords.push((Math.random() - 0.5) * 800, (Math.random() - 0.5) * 800, (Math.random() - 0.5) * 800);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.5 })));
+
+            // Initialize 360 Orbit Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 800; // Prevent zooming out too far
+            controls.minDistance = 5;
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Listen for camera target changes
+            document.getElementById('cameraTarget').addEventListener('change', (e) => {
+                cameraTargetObj = e.target.value;
+            });
+            
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            const earthSpeed = parseFloat(document.getElementById('earthSpeed').value);
+            const moonSpeed = parseFloat(document.getElementById('moonSpeed').value);
+            const nodeSpeed = parseFloat(document.getElementById('nodeSpeed').value);
+
+            // 1. Earth's Orbit around the Sun
+            earthAngle += earthSpeed * delta;
+            earthSystem.position.set(
+                Math.cos(earthAngle) * EARTH_ORBIT_RADIUS,
+                0,
+                Math.sin(earthAngle) * EARTH_ORBIT_RADIUS
+            );
+
+            // 2. Prograde Motion of the Moon (Counter-Clockwise relative to Earth)
+            moonAngle += moonSpeed * delta;
+            
+            // To position the moon, we calculate its position on a flat circle...
+            const mx = Math.cos(moonAngle) * LUNAR_ORBIT_RADIUS;
+            const mz = Math.sin(moonAngle) * LUNAR_ORBIT_RADIUS;
+            
+            // ...then apply the tilt (rotation around X axis)
+            moon.position.set(mx, -mz * Math.sin(ORBIT_TILT), mz * Math.cos(ORBIT_TILT));
+
+            // 3. Retrograde Precession of the Nodes (Clockwise)
+            // Notice we SUBTRACT the angle here, enforcing retrograde motion.
+            nodeAngle -= nodeSpeed * delta;
+            
+            // Rotate the entire tilted lunar system relative to Earth
+            lunarSystem.rotation.y = nodeAngle;
+            
+            // Rotate the visual markers for the nodes so they stay aligned with the intersection
+            nodesGroup.rotation.y = nodeAngle;
+
+            // Simple Earth spin
+            earth.rotation.y += 0.02;
+            
+            // Update Camera Target for 360 View
+            if (cameraTargetObj === 'earth') {
+                controls.target.copy(earthSystem.position);
+            } else {
+                controls.target.set(0, 0, 0);
+            }
+            controls.update(); // Apply damping and target tracking
+            
+            renderer.render(scene, camera);
+        }
+
+        // Zoom Controls (UI Buttons)
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            camera.position.lerp(controls.target, 0.2);
+            controls.update();
+        });
+        
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+            camera.position.add(dir.multiplyScalar(0.2));
+            controls.update();
+        });
+
+        // Panel Toggle Logic
+        document.getElementById('toggleBtn').addEventListener('click', function() {
+            const content = document.getElementById('panelContent');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                this.innerHTML = '&minus;';
+            } else {
+                content.style.display = 'none';
+                this.innerHTML = '&plus;';
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
